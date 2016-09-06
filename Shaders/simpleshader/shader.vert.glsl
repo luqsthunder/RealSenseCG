@@ -9,5 +9,6 @@ out vec2 texCoord;
 
 void main()
 {
-  gl_Position = a_inputVec;
+  gl_Position = vec4(aVertice, 1.0);
+  texCoord = atexCoord;
 }
