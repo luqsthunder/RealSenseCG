@@ -6,29 +6,49 @@
 
 using namespace rscg;
 
-inline static std::vector<unsigned>
-depthToTexture(const uint16_t* depthImage, unsigned w, unsigned h)
+void
+depthToTexture(const uint16_t* depthImage, unsigned w, unsigned h,
+std::vector<unsigned> &texture)
 {
-  std::vector<unsigned> texture(w * h * 3);
+  if(texture.size() < (w * h * 3))
+    texture.resize(w * h * 3);
 
   for(size_t y = 0; y < h; ++y)
   {
     for(size_t x = 0; x < w; ++x, ++depthImage)
     {
+
       //could be texture[args] = texture[args + 1] = *depthImage++
       texture[x + (y * (w + 3))]     = *depthImage;
       texture[x + (y * (w + 3)) + 1] = *depthImage;
       texture[x + (y * (w + 3)) + 2] = *depthImage;
     }
   }
-
-  return texture;
 }
 
 RealSenseImage::RealSenseImage(unsigned int w, unsigned int h) : _width(w),
                                                                  _height(h)
 {
-  gl::glGenTextures(1, &_texture);
+  _rgb.resize(_width * _height * 3);
+
+  using namespace gl;
+  glGenTextures(1, &_texture);
+  glGenVertexArrays(1, &_vao);
+  glGenBuffers(1, &_vbo);
+  glGenBuffers(1, &_ebo);
+
+  updateVertices({
+    // vertices and texture
+    -1.f,  1.f, 0.f,    -1.f,  1.f,
+    -1.f, -1.f, 0.f,    -1.f, -1.f,
+     1.f, -1.f, 0.f,     1.f, -1.f,
+     1.f,  1.f, 0.f,     1.f,  1.f
+  },
+  {
+    // indices
+    0, 1, 2,
+    0, 2, 3
+  });
 }
 
 RealSenseImage::RealSenseImage(const rs::device &device, unsigned w,
@@ -37,17 +57,61 @@ RealSenseImage::RealSenseImage(const rs::device &device, unsigned w,
   update(device);
 }
 
-void RealSenseImage::draw() const
+RealSenseImage::~RealSenseImage()
 {
+  using namespace gl;
 
+  glDeleteTextures(1, &_texture);
+  glDeleteVertexArrays(1, &_vao);
+  glDeleteBuffers(1, &_vbo);
+}
+
+void
+RealSenseImage::draw(unsigned program) const
+{
+  gl::glUseProgram(program);
+  gl::glBindVertexArray(_vao);
+  gl::glDrawElements(gl::GL_TRIANGLES, (gl::GLsizei)_vertCont,
+                     gl::GL_UNSIGNED_INT, 0);
+  gl::glBindVertexArray(0);
+}
+
+void
+RealSenseImage::updateVertices(const std::vector<float> &vertAndTex,
+                               const std::vector<unsigned> &indices)
+{
+  using namespace gl;
+
+  _vertCont = indices.size();
+
+  glBindVertexArray(_vao);
+  glBindBuffer(GL_ARRAY_BUFFER, _vbo);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, _ebo);
+
+  glBufferData(GL_ARRAY_BUFFER, sizeof(float) * vertAndTex.size(),
+               vertAndTex.data(), GL_STATIC_DRAW);
+
+  glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(unsigned) * indices.size(),
+               indices.data(), GL_STATIC_DRAW);
+
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE,
+                        5 * sizeof(float), (void*) nullptr);
+  glEnableVertexAttribArray(0);
+
+  glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE,
+                        5 * sizeof(float), (void*) (3 * sizeof(float)));
+  glEnableVertexAttribArray(1);
+
+  // remenber the vertex state not store buffer and store the indices
+  // so you cant unbind the gl_element_array_buffer
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
+  glBindVertexArray(0);
 }
 
 void
 RealSenseImage::update(const rs::device &device)
 {
   using namespace gl;
-
-  std::vector<unsigned> rgb;
 
   glBindTexture(gl::GL_TEXTURE_2D, _texture);
 
@@ -59,12 +123,13 @@ RealSenseImage::update(const rs::device &device)
   {
     case rs::format::any:
       throw std::runtime_error("not a valid format");
-    case rs::format::z16:
-    //case rs::format::disparity16:
-      rgb = depthToTexture(data, _width, _height);
+    case rs::format::z16: case rs::format::disparity16:
+    {
+      depthToTexture(data, _width, _height, _rgb);
       glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, _width, _height, 0, GL_RGB,
-                   GL_UNSIGNED_BYTE, rgb.data());
+                   GL_UNSIGNED_BYTE, _rgb.data());
       break;
+    }
     case rs::format::xyz32f:
       glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, _width, _height, 0, GL_RGB,
                    GL_FLOAT, data);

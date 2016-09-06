@@ -8,7 +8,16 @@ set(EXECUTABLE_NAME RealSenseCG)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
 
 set(SOURCE_FILES
-  "${PROJECT_SOURCE_DIR}/src/main.cc" src/realsenseimage.cc src/realsenseimage.h src/window.cc src/window.h)
+  ${PROJECT_SOURCE_DIR}/src/main.cc
+
+  ${PROJECT_SOURCE_DIR}/src/shaderprogram.h
+  ${PROJECT_SOURCE_DIR}/src/shaderprogram.cc
+
+  ${PROJECT_SOURCE_DIR}/src/realsenseimage.cc
+  ${PROJECT_SOURCE_DIR}/src/realsenseimage.h
+
+  ${PROJECT_SOURCE_DIR}/src/window.cc
+  ${PROJECT_SOURCE_DIR}/src/window.h)
 
 
 add_executable(${EXECUTABLE_NAME} ${SOURCE_FILES})
