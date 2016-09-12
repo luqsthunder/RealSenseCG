@@ -4,6 +4,8 @@
 
 #include <iostream>
 
+#include <cmath>
+
 using namespace rscg;
 using namespace gl;
 
@@ -43,8 +45,8 @@ depthToTexture(const uint16_t* depth_image, unsigned width, unsigned height,
         auto depthInMeters = ((float)rawDepth * scale);
 
         uint8_t depth = (uint8_t)((((depthInMeters) - 1.f)/(1.f - 0.2f)) * 256);
-        rgb_image[(x * 3) + (y * (width * 3))]     = depth;
-        rgb_image[(x * 3) + (y * (width * 3)) + 1] = depth;
+        rgb_image[(x * 3) + (y * (width * 3))]     = (uint8_t)(255 - depth);
+        rgb_image[(x * 3) + (y * (width * 3)) + 1] = 0;
         rgb_image[(x * 3) + (y * (width * 3)) + 2] = depth;
       }
       else
@@ -67,18 +69,24 @@ RealSenseImage::RealSenseImage(unsigned int w, unsigned int h) : _width(w),
   glGenBuffers(1, &_vbo);
   glGenBuffers(1, &_ebo);
 
-  updateVertices({
-    // vertices and texture
-    -1.f,  1.f, 0.f,     0.f,  0.f,
-    -1.f, -1.f, 0.f,     0.f,  1.f,
-     1.f, -1.f, 0.f,     1.f,  1.f,
-     1.f,  1.f, 0.f,     1.f,  0.f
+  createVertices({
+   // vertices and texture
+   -1.f, 1.f, 0.f, 0.f, 0.f,
+   -1.f, -1.f, 0.f, 0.f, 1.f,
+    1.f, -1.f, 0.f, 1.f, 1.f,
+    1.f, 1.f, 0.f, 1.f, 0.f
   },
   {
-    // indices
-    0, 1, 2,
-    0, 2, 3
-  });
+   // indices
+   0, 1, 2,
+   0, 2, 3
+  }, _vbo, _ebo, _vao, GL_STATIC_DRAW);
+
+  _vertCont = 6;
+
+  glGenBuffers(1,& _vboPointCloud);
+  glGenBuffers(1,& _eboPointCloud);
+  glGenVertexArrays(1, &_vaoPointCloud);
 }
 
 RealSenseImage::RealSenseImage(const rs::device &device, unsigned w,
@@ -92,12 +100,15 @@ RealSenseImage::~RealSenseImage()
   glDeleteTextures(1, &_texture);
   glDeleteVertexArrays(1, &_vao);
   glDeleteBuffers(1, &_vbo);
+
+  glDeleteVertexArrays(1, &_vaoPointCloud);
+  glDeleteBuffers(1, &_vboPointCloud);
+  glDeleteBuffers(1, &_eboPointCloud);
 }
 
 void
 RealSenseImage::draw(unsigned program) const
 {
-
   glUseProgram(program);
 
   glActiveTexture(GL_TEXTURE0);
@@ -113,17 +124,32 @@ RealSenseImage::draw(unsigned program) const
 }
 
 void
-RealSenseImage::updateVertices(const std::vector<float> &vertAndTex,
-                               const std::vector<unsigned> &indices)
+RealSenseImage::drawPointCloud(unsigned program) const
 {
-  _vertCont = indices.size();
+  glUseProgram(program);
 
-  glBindVertexArray(_vao);
-  glBindBuffer(GL_ARRAY_BUFFER, _vbo);
-  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, _ebo);
+  glBindVertexArray(_vaoPointCloud);
+
+  glDrawArrays(GL_POINTS, 0, (GLsizei)256);
+
+  //glDrawElements(GL_POINTS, (gl::GLsizei)256,
+  //               GL_UNSIGNED_INT, 0);
+
+  glBindVertexArray(0);
+}
+
+void
+RealSenseImage::createVertices(const std::vector<float> &vertAndTex,
+                               const std::vector<unsigned> &indices,
+                               unsigned &vbo, unsigned &ebo, unsigned &vao,
+                               gl::GLenum bufferType)
+{
+  glBindVertexArray(vao);
+  glBindBuffer(GL_ARRAY_BUFFER, vbo);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
 
   glBufferData(GL_ARRAY_BUFFER, sizeof(float) * vertAndTex.size(),
-               vertAndTex.data(), GL_STATIC_DRAW);
+               vertAndTex.data(), bufferType);
 
   glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(unsigned) * indices.size(),
                indices.data(), GL_STATIC_DRAW);
@@ -145,6 +171,41 @@ RealSenseImage::updateVertices(const std::vector<float> &vertAndTex,
 void
 RealSenseImage::update(const rs::device &device)
 {
+  if(_buffer.size() == 0)
+  {
+    _buffer.resize(_width * _height * 3);
+    glBindVertexArray(_vaoPointCloud);
+
+    glBindBuffer(GL_ARRAY_BUFFER, _vboPointCloud);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, _eboPointCloud);
+
+    glBufferData(GL_ARRAY_BUFFER, sizeof(float) * _buffer.size(),
+                 _buffer.data(), GL_STATIC_DRAW);
+
+    std::vector<unsigned> indices;
+    for(unsigned y = 0; y < _height; ++y)
+    {
+      for(unsigned x = 0; x < _width; ++x)
+      {
+        indices.push_back(x + (y * _width));
+        indices.push_back(x + ((y + 1) * _width));
+        indices.push_back((x + 1) + ((y + 1) * _width));
+
+        indices.push_back(x + (y * _width));
+        indices.push_back((x + 1) + ((y + 1) * _width));
+        indices.push_back((x + 1) + (y * _width));
+      }
+    }
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(unsigned) * indices.size(),
+                 indices.data(), GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE,
+                          3 * sizeof(float), (void*) nullptr);
+    glEnableVertexAttribArray(0);
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+  }
+
   glBindTexture(gl::GL_TEXTURE_2D, _texture);
 
   const uint16_t *data =
@@ -161,6 +222,9 @@ RealSenseImage::update(const rs::device &device)
       depthToTexture(data, _width, _height, _rgb, sensorDepthScale);
       glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, _width, _height, 0, GL_RGB,
                    GL_UNSIGNED_BYTE, _rgb.data());
+
+      auto intrinsics = device.get_stream_intrinsics(rs::stream::depth);
+      updatePointCloud(data, intrinsics, device.get_depth_scale());
       break;
     }
     case rs::format::xyz32f:
@@ -227,6 +291,44 @@ RealSenseImage::update(const rs::device &device)
   //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
 
   glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+void
+RealSenseImage::updatePointCloud(const uint16_t *depthImage,
+                                 rs::intrinsics intrinsics,  float cameraScale)
+{
+  size_t pointCloudVertCont = 0;
+  float xDp,yDp,zDp;
+  for(size_t y = 0; y < _height; ++y)
+  {
+    for(size_t x = 0; x < _width; ++x)
+    {
+      auto rawDepth = *depthImage;
+      if(rawDepth != 0)
+      {
+        /*float normDepth = ((( ((float)rawDepth) * cameraScale)  - 1.f) /
+                           (1.f - 0.2f));
+
+        yDp = (normDepth * (float)x) / std::sqrt(std::pow(cameraFy, 2) +
+                                          std::pow(y, 2));
+
+        xDp = (normDepth * (float)y) / std::sqrt(std::pow(cameraFx, 2) +
+                                          std::pow(x, 2));
+        zDp = std::sqrt(std::pow(normDepth, 2) - std::pow(y, 2));*/
+
+
+        auto dp = intrinsics.deproject({x, y}, rawDepth);
+        
+        _buffer[(pointCloudVertCont * 3)]     = dp.x;
+        _buffer[(pointCloudVertCont * 3) + 1] = dp.y;
+        _buffer[(pointCloudVertCont * 3) + 2] = dp.z;
+      }
+    }
+  }
+  glBindBuffer(GL_ARRAY_BUFFER, _vboPointCloud);
+  glBufferData(GL_ARRAY_BUFFER, pointCloudVertCont, _buffer.data(),
+               GL_STATIC_DRAW);
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
 std::vector<unsigned>

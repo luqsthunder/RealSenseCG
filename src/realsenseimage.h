@@ -52,22 +52,31 @@ public:
 
   void draw(unsigned program) const;
 
+  void drawPointCloud(unsigned program) const;
+
 /**
   * @return a array 2D with sizes of image
   */
   std::vector<unsigned> size();
 
 protected:
-  void updateVertices(const std::vector<float> &vertsAndTex,
-                      const std::vector<unsigned> &indices);
+  void createVertices(const std::vector<float> &vertsAndTex,
+                      const std::vector<unsigned> &indices,
+                      unsigned &vbo, unsigned &ebo, unsigned &vao,
+                      gl::GLenum bufferType);
+
+  void updatePointCloud(const uint16_t *depthImage, rs::intrinsics intrinsics,
+                        float cameraScale);
 
   std::vector<uint8_t>  _rgb;
 
   std::vector<float> _buffer;
-  unsigned _width, _height;
-  size_t _vertCont;
 
-  unsigned _texture, _vbo, _vao, _ebo;
+  unsigned _width, _height;
+  size_t _vertCont, _vertContPointCloud;
+
+  unsigned _texture, _vbo, _vao, _ebo, _vboPointCloud, _vaoPointCloud,
+           _eboPointCloud;
 };
 
 }

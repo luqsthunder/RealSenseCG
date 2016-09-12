@@ -37,8 +37,10 @@ main(int argc, char **argv)
   SDL_Event event;
   rscg::RealSenseImage depthImage{640, 480};
 
-  rscg::ShaderProgram shaderProgram{"Shaders/simpleshader",
+  rscg::ShaderProgram textureProgram{"Shaders/simpleshader",
                                     {GL_VERTEX_SHADER, GL_FRAGMENT_SHADER}};
+  rscg::ShaderProgram pointCloudProgram{"Shaders/SimplePointCloud",
+                                       {GL_VERTEX_SHADER, GL_FRAGMENT_SHADER}};
 
   glm::mat4 proj;
   //proj = glm::ortho()
@@ -54,11 +56,13 @@ main(int argc, char **argv)
 
     depthImage.update(*device);
 
-    glClearColor(1.f, 1.f, 1.f, 1.f);
+    glClearColor(0.f, 0.f, 0.f, 0.f);
     glClear(gl::GL_COLOR_BUFFER_BIT);
 
     //shaderProgram.updateUniform(proj, "");
-    depthImage.draw(shaderProgram.programID());
+    //depthImage.draw(textureProgram.programID());
+    glPointSize(4.f);
+    depthImage.drawPointCloud(pointCloudProgram.programID());
 
     SDL_GL_SwapWindow(window);
   }
