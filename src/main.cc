@@ -19,7 +19,7 @@ main(int argc, char **argv)
 {
   using namespace gl;
 
-  rscg::Window window{};
+  rscg::Window window{1366, 768};
 
   glbinding::Binding::initialize();
 
@@ -28,7 +28,7 @@ main(int argc, char **argv)
     throw std::runtime_error("no device found");
 
   rs::device *device = ctx.get_device(0);
-  device->enable_stream(rs::stream::depth, 640, 480, rs::format::z16, 60);
+  device->enable_stream(rs::stream::depth, rs::preset::best_quality);
   device->start();
 
   std::cout << "device scale: " << device->get_depth_scale() << std::endl;
@@ -52,7 +52,7 @@ main(int argc, char **argv)
     }
     device->wait_for_frames();
 
-    //depthImage.update(*device);
+    depthImage.update(*device);
 
     glClearColor(1.f, 1.f, 1.f, 1.f);
     glClear(gl::GL_COLOR_BUFFER_BIT);

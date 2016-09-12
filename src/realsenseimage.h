@@ -61,7 +61,7 @@ protected:
   void updateVertices(const std::vector<float> &vertsAndTex,
                       const std::vector<unsigned> &indices);
 
-  std::vector<unsigned> _rgb;
+  std::vector<uint8_t>  _rgb;
 
   std::vector<float> _buffer;
   unsigned _width, _height;

@@ -5,23 +5,54 @@
 #include <iostream>
 
 using namespace rscg;
+using namespace gl;
+
+
+void print(const std::vector<uint8_t > &v)
+{
+  for(size_t y = 0; y < 640; ++y)
+  {
+    for(size_t x = 0; x < 480; ++x)
+    {
+      std::cout << "["
+                << (int)v[x + (y * 640 * 3)]     << " "
+                << (int)v[x + (y * 640 * 3) + 1] << " "
+                << (int)v[x + (y * 640 * 3) + 2]
+                << "]";
+    }
+    std::cout << std::endl;
+  }
+}
 
 void
-depthToTexture(const uint16_t* depthImage, unsigned w, unsigned h,
-std::vector<unsigned> &texture)
+depthToTexture(const uint16_t* depth_image, unsigned width, unsigned height,
+               std::vector<uint8_t> &rgb_image, float scale)
 {
-  if(texture.size() < (w * h * 3))
-    texture.resize(w * h * 3);
+  if(rgb_image.size() < (width * height * 3))
+    rgb_image.resize(width * height * 3);
 
-  for(size_t y = 0; y < h; ++y)
+  for(size_t y = 0; y < height; ++y)
   {
-    for(size_t x = 0; x < w; ++x, ++depthImage)
+    for(size_t x = 0; x < width; ++x, ++depth_image)
     {
 
       //could be texture[args] = texture[args + 1] = *depthImage++
-      texture[x + (y * (w + 3))]     = *depthImage;
-      texture[x + (y * (w + 3)) + 1] = *depthImage;
-      texture[x + (y * (w + 3)) + 2] = *depthImage;
+      auto rawDepth = (*depth_image);// % (256 * 32);
+      if(rawDepth > 0)
+      {
+        auto depthInMeters = ((float)rawDepth * scale);
+
+        uint8_t depth = (uint8_t)((((depthInMeters) - 1.f)/(1.f - 0.2f)) * 256);
+        rgb_image[(x * 3) + (y * (width * 3))]     = depth;
+        rgb_image[(x * 3) + (y * (width * 3)) + 1] = depth;
+        rgb_image[(x * 3) + (y * (width * 3)) + 2] = depth;
+      }
+      else
+      {
+        rgb_image[(x * 3) + (y * (width * 3))]     = 0;
+        rgb_image[(x * 3) + (y * (width * 3)) + 1] = 0;
+        rgb_image[(x * 3) + (y * (width * 3)) + 2] = 0;
+      }
     }
   }
 }
@@ -31,7 +62,6 @@ RealSenseImage::RealSenseImage(unsigned int w, unsigned int h) : _width(w),
 {
   _rgb.resize(_width * _height * 3);
 
-  using namespace gl;
   glGenTextures(1, &_texture);
   glGenVertexArrays(1, &_vao);
   glGenBuffers(1, &_vbo);
@@ -39,10 +69,10 @@ RealSenseImage::RealSenseImage(unsigned int w, unsigned int h) : _width(w),
 
   updateVertices({
     // vertices and texture
-    -1.f,  1.f, 0.f,    -1.f,  1.f,
-    -1.f, -1.f, 0.f,    -1.f, -1.f,
-     1.f, -1.f, 0.f,     1.f, -1.f,
-     1.f,  1.f, 0.f,     1.f,  1.f
+    -1.f,  1.f, 0.f,     0.f,  0.f,
+    -1.f, -1.f, 0.f,     0.f,  1.f,
+     1.f, -1.f, 0.f,     1.f,  1.f,
+     1.f,  1.f, 0.f,     1.f,  0.f
   },
   {
     // indices
@@ -59,8 +89,6 @@ RealSenseImage::RealSenseImage(const rs::device &device, unsigned w,
 
 RealSenseImage::~RealSenseImage()
 {
-  using namespace gl;
-
   glDeleteTextures(1, &_texture);
   glDeleteVertexArrays(1, &_vao);
   glDeleteBuffers(1, &_vbo);
@@ -69,19 +97,25 @@ RealSenseImage::~RealSenseImage()
 void
 RealSenseImage::draw(unsigned program) const
 {
-  gl::glUseProgram(program);
-  gl::glBindVertexArray(_vao);
-  gl::glDrawElements(gl::GL_TRIANGLES, (gl::GLsizei)_vertCont,
-                     gl::GL_UNSIGNED_INT, 0);
-  gl::glBindVertexArray(0);
+
+  glUseProgram(program);
+
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, _texture);
+  glUniform1i(glGetUniformLocation(program, "uTexture"), 0);
+
+  glBindVertexArray(_vao);
+  glDrawElements(GL_TRIANGLES, (gl::GLsizei)_vertCont,
+                 GL_UNSIGNED_INT, 0);
+
+  glBindTexture(GL_TEXTURE_2D, 0);
+  glBindVertexArray(0);
 }
 
 void
 RealSenseImage::updateVertices(const std::vector<float> &vertAndTex,
                                const std::vector<unsigned> &indices)
 {
-  using namespace gl;
-
   _vertCont = indices.size();
 
   glBindVertexArray(_vao);
@@ -111,21 +145,20 @@ RealSenseImage::updateVertices(const std::vector<float> &vertAndTex,
 void
 RealSenseImage::update(const rs::device &device)
 {
-  using namespace gl;
-
   glBindTexture(gl::GL_TEXTURE_2D, _texture);
 
   const uint16_t *data =
     reinterpret_cast<const uint16_t*>(device.get_frame_data(rs::stream::depth));
 
-  rs::format format;
+  rs::format format = device.get_stream_format(rs::stream::depth);
+  auto sensorDepthScale = device.get_depth_scale();
   switch(format)
   {
     case rs::format::any:
       throw std::runtime_error("not a valid format");
-    case rs::format::z16: case rs::format::disparity16:
+  case rs::format::z16: case rs::format::disparity16:
     {
-      depthToTexture(data, _width, _height, _rgb);
+      depthToTexture(data, _width, _height, _rgb, sensorDepthScale);
       glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, _width, _height, 0, GL_RGB,
                    GL_UNSIGNED_BYTE, _rgb.data());
       break;
