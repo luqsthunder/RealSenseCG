@@ -8,6 +8,7 @@
 #include <librealsense/rs.hpp>
 
 #include <vector>
+#include <set>
 
 namespace rscg
 {
@@ -52,7 +53,7 @@ public:
 
   void draw(unsigned program) const;
 
-  void drawPointCloud(unsigned program) const;
+  void drawPointCloud(unsigned program, const glm::mat4& unfvaleu) const;
 
 /**
   * @return a array 2D with sizes of image
@@ -70,7 +71,7 @@ protected:
 
   std::vector<uint8_t>  _rgb;
 
-  std::vector<float> _buffer;
+  std::vector<float> _pointCloud;
 
   unsigned _width, _height;
   size_t _vertCont, _vertContPointCloud;

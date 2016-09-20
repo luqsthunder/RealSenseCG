@@ -2,6 +2,9 @@
 
 project using librealsense as sdk as replacement for oficial intel sdk, with purpose to implement gesture recognition from hands and using opencl to make others process
 
+# Depth Values
+was seeing that min value to depth after multiply by camera_scale is 0.0113384 and for maximum value was seen is 2.04113
+
 # Compiling Librealsense
 
 ## creating udev rule(this is needed for linux found camera)

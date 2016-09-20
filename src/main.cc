@@ -42,8 +42,11 @@ main(int argc, char **argv)
   rscg::ShaderProgram pointCloudProgram{"Shaders/SimplePointCloud",
                                        {GL_VERTEX_SHADER, GL_FRAGMENT_SHADER}};
 
-  glm::mat4 proj;
-  //proj = glm::ortho()
+  glm::mat4 proj, view;
+  proj = glm::perspective(60.f, 1366.f/768.f, 0.01f, 100.f);
+  view = glm::lookAt(glm::vec3{0.f, 0.f, -1.f}, glm::vec3{0.f, 0.f, 1.f},
+                     glm::vec3{0.f, 1.f, 0.f});
+
   while(running)
   {
     while(SDL_PollEvent(&event))
@@ -61,8 +64,8 @@ main(int argc, char **argv)
 
     //shaderProgram.updateUniform(proj, "");
     //depthImage.draw(textureProgram.programID());
-    glPointSize(4.f);
-    depthImage.drawPointCloud(pointCloudProgram.programID());
+    glPointSize(2.f);
+    depthImage.drawPointCloud(pointCloudProgram.programID(), proj * view);
 
     SDL_GL_SwapWindow(window);
   }
