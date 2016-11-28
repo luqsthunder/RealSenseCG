@@ -35,10 +35,10 @@ public:
   * This constructor load all shader sources from path checking kinds of shader
   * you passing in shaders param, in e.g: resPath = shaders/scene1/water/,
   * and shadersKind = gl::GL_VERTEX_SHADER | gl::GL_TESS_CONTROL_SHADER |
-  * gl::GL_TESS_EVALUATION_SHADER | gl::GL_FRAGMENT_SHADER, the constructor will take
-  * all enum and search on resPath for all shaders with name shader.vert.glsl
-  * for vertex shader, shader.tesseval.glsl for tesselation evaluation shader,
-  * and so on.
+  * gl::GL_TESS_EVALUATION_SHADER | gl::GL_FRAGMENT_SHADER, the constructor 
+  * will take all enum and search on resPath for all shaders with name 
+  * shader.vert.glsl for vertex shader, shader.tesseval.glsl for tesselation 
+  * evaluation shader, and so on.
   */
   ShaderProgram(const std::string resPath,
                 const std::vector<gl::GLenum> &shadersKind);

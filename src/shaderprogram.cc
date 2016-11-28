@@ -126,7 +126,6 @@ ShaderProgram::updateUniform(const glm::mat4 &value, const std::string &name)
 {
   auto loc = uniformLocation(name);
   bind();
-
 }
 
 static
@@ -184,12 +183,12 @@ LoadShader(const std::string &resourcePath)
 
   fileStream.open(resourcePath.c_str());
 
-  if(not fileStream.good())
+  if(! fileStream.good())
     throw std::invalid_argument("resource Path:" + resourcePath);
 
   std::string line;
 
-  for(;not fileStream.eof(); content += '\n')
+  for(;! fileStream.eof(); content += '\n')
   {
     std::getline(fileStream, line);
 

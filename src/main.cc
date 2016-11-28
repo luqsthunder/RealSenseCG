@@ -1,16 +1,26 @@
 #include <iostream>
+#include <memory>
 
-#include <SDL2/SDL.h>
+#include <SDL.h>
 
-#include <glbinding/gl/gl.h>
-#include <glbinding/Binding.h>
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable: 4251)
+#endif
+
+#include <glbinding\gl\gl.h>
+#include <glbinding\Binding.h>
+
+#ifndef _MSC_VER
+#pragma warning(pop)
+#endif
+
 
 #include <glm/glm.hpp>
 #include <glm/gtx/transform.hpp>
 
-#include <librealsense/rs.hpp>
-
 #include "realsenseimage.h"
+#include "camera.h"
 #include "shaderprogram.h"
 #include "window.h"
 
@@ -23,15 +33,7 @@ main(int argc, char **argv)
 
   glbinding::Binding::initialize();
 
-  rs::context ctx;
-  if(ctx.get_device_count() == 0)
-    throw std::runtime_error("no device found");
-
-  rs::device *device = ctx.get_device(0);
-  device->enable_stream(rs::stream::depth, rs::preset::best_quality);
-  device->start();
-
-  std::cout << "device scale: " << device->get_depth_scale() << std::endl;
+  auto device = rscg::CameraDeviceWindows{};
 
   bool running = true;
   SDL_Event event;
@@ -51,26 +53,19 @@ main(int argc, char **argv)
   {
     while(SDL_PollEvent(&event))
     {
-      if((event.type == SDL_QUIT) or ((event.type == SDL_KEYUP) and
-                                     event.key.keysym.sym == SDLK_ESCAPE))
+      if((event.type == SDL_QUIT) || ((event.type == SDL_KEYUP) &&
+                                       event.key.keysym.sym == SDLK_ESCAPE))
         running = false;
     }
-    device->wait_for_frames();
-
-    depthImage.update(*device);
 
     glClearColor(0.f, 0.f, 0.f, 0.f);
     glClear(gl::GL_COLOR_BUFFER_BIT);
 
-    //shaderProgram.updateUniform(proj, "");
-    //depthImage.draw(textureProgram.programID());
-    glPointSize(2.f);
-    depthImage.drawPointCloud(pointCloudProgram.programID(), proj * view);
+    depthImage.update(device);
+    device.releaseFrame();
+    depthImage.draw(textureProgram.programID());
 
     SDL_GL_SwapWindow(window);
   }
-
-  device->stop();
-
   return 0;
 }

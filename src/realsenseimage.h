@@ -5,10 +5,10 @@
 
 #include <glm/mat4x4.hpp>
 
-#include <librealsense/rs.hpp>
-
 #include <vector>
 #include <set>
+
+#include "camera.h"
 
 namespace rscg
 {
@@ -37,7 +37,7 @@ public:
   * @brief create a image with w and h size and not change after created,
   * and create image from frame aquired from camera
   */
-  RealSenseImage(const rs::device& device , unsigned w, unsigned h);
+  RealSenseImage(rscg::CameraDevice& device, unsigned w, unsigned h);
 
 /**
   * @brief default destructor
@@ -49,7 +49,7 @@ public:
   *
   * @brief
   */
-  void update(const rs::device& device);
+  void update(rscg::CameraDevice& device);
 
   void draw(unsigned program) const;
 
@@ -66,7 +66,8 @@ protected:
                       unsigned &vbo, unsigned &ebo, unsigned &vao,
                       gl::GLenum bufferType);
 
-  void updatePointCloud(const uint16_t *depthImage, rs::intrinsics intrinsics,
+  void updatePointCloud(const uint16_t *depthImage, 
+                        rscg::Intrinsics intrinsics,
                         float cameraScale);
 
   std::vector<uint8_t>  _rgb;

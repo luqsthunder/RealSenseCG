@@ -25,12 +25,27 @@ add_executable(${EXECUTABLE_NAME} ${SOURCE_FILES})
 find_package(SDL2 REQUIRED)
 find_package(OpenGL REQUIRED)
 find_package(GLBINDING REQUIRED)
+find_package(OpenCL REQUIRED)
 
 if(SDL2_FOUND)
   include_directories(${SDL2_INCLUDE_DIR})
-  target_link_libraries(${EXECUTABLE_NAME} ${SDL2_LIBRARY} realsense)
+  target_link_libraries(${EXECUTABLE_NAME} ${SDL2_LIBRARY})
 else()
   message("SDL2 NOT FOUND")
+endif()
+
+if(WIN32 AND MSVC)
+	find_package(RSSDK REQUIRED)
+	
+	include_directories(${RSSDK_INCLUDE_DIRS})
+	target_link_libraries(${EXECUTABLE_NAME} ${RSSDK_LIBRARIES})
+endif()
+
+if(OpenCL_FOUND)
+  include_directories(${OpenCL_INCLUDE_DIR})
+  target_link_libraries(${EXECUTABLE_NAME} ${OpenCL_LIBRARIES})
+else()
+  message("OpenCL NOT FOUND")
 endif()
 
 if(GLBINDING_FOUND)

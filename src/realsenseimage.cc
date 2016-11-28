@@ -46,7 +46,6 @@ depthToTexture(const uint16_t* depth_image, unsigned width, unsigned height,
   {
     for(size_t x = 0; x < width; ++x)
     {
-
       //could be texture[args] = texture[args + 1] = *depthImage++
       auto rawDepth = (depth_image[x + (y * width)]);
       if(rawDepth > 0)
@@ -68,6 +67,40 @@ depthToTexture(const uint16_t* depth_image, unsigned width, unsigned height,
   }
 }
 
+void
+depthToTexture(const unsigned char* depth_image, unsigned width,
+               unsigned height, std::vector<unsigned char> &rgb_image, 
+               float scale)
+{
+  if(rgb_image.size() < (width * height * 3))
+    rgb_image.resize(width * height * 3);
+
+  for(size_t y = 0; y < height; ++y)
+  {
+    for(size_t x = 0; x < width; ++x)
+    {
+      //could be texture[args] = texture[args + 1] = *depthImage++
+      auto rawDepth = (depth_image[x + (y * width)]);
+      if(rawDepth > 0)
+      {
+        auto depthInMeters = ((float)rawDepth * scale);
+
+        uint8_t depth = (uint8_t)((((depthInMeters)-0.011f) / (2.041f - 0.011f)) * 255);
+        rgb_image[(x * 3) + (y * (width * 3))] = depth;//(uint8_t)(255 - depth);
+        rgb_image[(x * 3) + (y * (width * 3)) + 1] = depth;
+        rgb_image[(x * 3) + (y * (width * 3)) + 2] = depth;
+      }
+      else
+      {
+        rgb_image[(x * 3) + (y * (width * 3))] = 0;
+        rgb_image[(x * 3) + (y * (width * 3)) + 1] = 0;
+        rgb_image[(x * 3) + (y * (width * 3)) + 2] = 0;
+      }
+    }
+  }
+
+}
+
 RealSenseImage::RealSenseImage(unsigned int w, unsigned int h) : _width(w),
                                                                  _height(h)
 {
@@ -80,10 +113,10 @@ RealSenseImage::RealSenseImage(unsigned int w, unsigned int h) : _width(w),
 
   createVertices({
    // vertices and texture
-   -1.f, 1.f, 0.f, 0.f, 0.f,
-   -1.f, -1.f, 0.f, 0.f, 1.f,
-    1.f, -1.f, 0.f, 1.f, 1.f,
-    1.f, 1.f, 0.f, 1.f, 0.f
+   -1.f,  1.f,  0.f, 0.f, 0.f,
+   -1.f, -1.f,  0.f, 0.f, 1.f,
+    1.f, -1.f,  0.f, 1.f, 1.f,
+    1.f,  1.f,  0.f, 1.f, 0.f
   },
   {
    // indices
@@ -98,7 +131,7 @@ RealSenseImage::RealSenseImage(unsigned int w, unsigned int h) : _width(w),
   glGenVertexArrays(1, &_vaoPointCloud);
 }
 
-RealSenseImage::RealSenseImage(const rs::device &device, unsigned w,
+RealSenseImage::RealSenseImage(rscg::CameraDevice& device, unsigned w,
                                unsigned h)  : RealSenseImage(w, h)
 {
   update(device);
@@ -178,7 +211,7 @@ RealSenseImage::createVertices(const std::vector<float> &vertAndTex,
 }
 
 void
-RealSenseImage::update(const rs::device &device)
+RealSenseImage::update(rscg::CameraDevice &device)
 {
   if(_pointCloud.size() == 0)
   {
@@ -200,88 +233,14 @@ RealSenseImage::update(const rs::device &device)
     glBindVertexArray(0);
   }
 
+  auto res = device.fetchDepthFrame();
+  depthToTexture(res, _width, _height, _rgb, device.scale());
+
   glBindTexture(gl::GL_TEXTURE_2D, _texture);
 
-  const uint16_t *data =
-    reinterpret_cast<const uint16_t*>(device.get_frame_data(rs::stream::depth));
-
-  rs::format format = device.get_stream_format(rs::stream::depth);
-  auto sensorDepthScale = device.get_depth_scale();
-  switch(format)
-  {
-    case rs::format::any:
-      throw std::runtime_error("not a valid format");
-    case rs::format::z16: case rs::format::disparity16:
-    {
-      depthToTexture(data, _width, _height, _rgb, sensorDepthScale);
-      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, _width, _height, 0, GL_RGB,
-                   GL_UNSIGNED_BYTE, _rgb.data());
-
-      auto intrinsics = device.get_stream_intrinsics(rs::stream::depth);
-      updatePointCloud(data, intrinsics, device.get_depth_scale());
-      break;
-    }
-    case rs::format::xyz32f:
-      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, _width, _height, 0, GL_RGB,
-                   GL_FLOAT, data);
-      break;
-    // Display YUYV by showing the luminance channel and packing chrominance
-    // into ignored alpha channel
-    case rs::format::yuyv:
-      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, _width, _height, 0,
-                   GL_LUMINANCE_ALPHA, GL_UNSIGNED_BYTE, data);
-      break;
-    // Display both RGB and BGR by interpreting them RGB, to show the flipped
-    // byte ordering. Obviously, GL_BGR could be used on OpenGL 1.2+
-    case rs::format::rgb8: case rs::format::bgr8:
-      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, _width, _height, 0, GL_RGB,
-                   GL_UNSIGNED_BYTE, data);
-      break;
-    // Display both RGBA and BGRA by interpreting them RGBA, to show the
-    // flipped byte ordering. Obviously, GL_BGRA could be used on OpenGL 1.2+
-    case rs::format::rgba8: case rs::format::bgra8:
-      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, _width, _height, 0, GL_RGBA,
-                   GL_UNSIGNED_BYTE, data);
-      break;
-    case rs::format::y8:
-      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, _width, _height, 0, GL_LUMINANCE,
-                   GL_UNSIGNED_BYTE, data);
-      break;
-    case rs::format::y16:
-      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, _width, _height, 0, GL_LUMINANCE,
-                  GL_UNSIGNED_SHORT, data);
-      break;
-    case rs::format::raw10:
-    {
-      // Visualize Raw10 by performing a naive downsample. Each 2x2 block
-      // contains one red pixel, two green pixels, and one blue pixel,
-      // so combine them into a single RGB triple.
-      _rgb.clear(); _rgb.resize(_width/2 * _height/2 * 3);
-      std::cout << "raw 10 lol" << std::endl;
-      auto out = _rgb.data();
-      auto in0 = reinterpret_cast<const uint8_t *>(data);
-      decltype(in0) in1 = in0 + _width*5/4;
-      for(int y=0; y<_height; y+=2)
-      {
-        for(int x=0; x<_width; x+=4)
-        {
-          // RGRG -> RGB RGB
-          *out++ = in0[0]; *out++ = (in0[1] + in1[0]) / 2; *out++ = in1[1];
-          // GBGB
-          *out++ = in0[2]; *out++ = (in0[3] + in1[2]) / 2; *out++ = in1[3];
-          in0 += 5; in1 += 5;
-        }
-        in0 = in1; in1 += _width*5/4;
-      }
-      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, _width/2, _height/2, 0, GL_RGB,
-                   GL_UNSIGNED_BYTE, _rgb.data());
-
-      break;
-    }
-    default:
-    std::cout << "default" << std::endl;
-      break;
-  }
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, _width, _height, 0, GL_RGB,
+               GL_UNSIGNED_BYTE, _rgb.data());
+  
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 
@@ -290,7 +249,8 @@ RealSenseImage::update(const rs::device &device)
 
 void
 RealSenseImage::updatePointCloud(const uint16_t *depthImage,
-                                 rs::intrinsics intrinsics, float cameraScale)
+                                 rscg::Intrinsics intrinsics, 
+                                 float cameraScale)
 {
   size_t pointCloudVertCont = 0;
   float xDepth, yDepth, zDepth;
