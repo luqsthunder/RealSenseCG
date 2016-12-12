@@ -356,20 +356,27 @@ OclPointCloud::update(const std::vector<uint8_t>& depthImg,
 
   cl_event runKernelEv;
 
+  size_t global[2] = {640, 480};
+  size_t local[2] = {32, 32};
+
   cl_float2 focal, pp;
   focal = {cam.intrinsics().fx, cam.intrinsics().fy};
   pp = {cam.intrinsics().ppx, cam.intrinsics().ppy};
 
   ciErrNum = clSetKernelArg(ckKernel, 0, sizeof(cl_mem), &depthImageCL);
   std::cerr << oclErrorString(ciErrNum) << std::endl;
+
   ciErrNum = clSetKernelArg(ckKernel, 1, sizeof(cl_mem), &vboCL);
   std::cerr << oclErrorString(ciErrNum) << std::endl;
+
   ciErrNum = clSetKernelArg(ckKernel, 2, sizeof(cl_float2), &focal);
   std::cerr << oclErrorString(ciErrNum) << std::endl;
+
   ciErrNum = clSetKernelArg(ckKernel, 3, sizeof(cl_float2), &pp);
   std::cerr << oclErrorString(ciErrNum) << std::endl;
 
-  ciErrNum = clEnqueueTask(cqCommandQueue, ckKernel, 0, NULL, &runKernelEv);
+  clEnqueueNDRangeKernel(cqCommandQueue, ckKernel, 2, NULL, global, local, 0, 
+                         NULL, NULL);
   std::cerr << oclErrorString(ciErrNum) << std::endl;
 
   clWaitForEvents(1, &runKernelEv);
