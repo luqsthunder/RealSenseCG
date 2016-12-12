@@ -17,15 +17,37 @@ set(SOURCE_FILES
   ${PROJECT_SOURCE_DIR}/src/realsenseimage.h
 
   ${PROJECT_SOURCE_DIR}/src/window.cc
-  ${PROJECT_SOURCE_DIR}/src/window.h)
+  ${PROJECT_SOURCE_DIR}/src/window.h
+  
+  ${PROJECT_SOURCE_DIR}/src/camera.h
+  ${PROJECT_SOURCE_DIR}/src/camera.cc
+  
+  ${PROJECT_SOURCE_DIR}/src/shaderprogram.h
+  ${PROJECT_SOURCE_DIR}/src/shaderprogram.cc
+  
+  ${PROJECT_SOURCE_DIR}/src/oclpointcloud.h
+  ${PROJECT_SOURCE_DIR}/src/oclpointcloud.cc
+
+  ${PROJECT_SOURCE_DIR}/src/RSCGutils.h)
 
 
+ set(SHADERS ${PROJECT_SOURCE_DIR}/Shaders/simpleshader/shader.frag.glsl
+             ${PROJECT_SOURCE_DIR}/Shaders/simpleshader/shader.vert.glsl
+			  
+			 ${PROJECT_SOURCE_DIR}/Shaders/SimplePointCloud/shader.frag.glsl
+			 ${PROJECT_SOURCE_DIR}/Shaders/SimplePointCloud/shader.frag.glsl)
+  
 add_executable(${EXECUTABLE_NAME} ${SOURCE_FILES})
 
 find_package(SDL2 REQUIRED)
 find_package(OpenGL REQUIRED)
 find_package(GLBINDING REQUIRED)
 find_package(OpenCL REQUIRED)
+find_package(GLM REQUIRED)
+
+if(GLM_FOUND)
+  include_directories(${GLM_INCLUDE_DIRS})
+endif()
 
 if(SDL2_FOUND)
   include_directories(${SDL2_INCLUDE_DIR})
@@ -36,6 +58,9 @@ endif()
 
 if(WIN32 AND MSVC)
 	find_package(RSSDK REQUIRED)
+	
+	source_group("src" FILES ${SOURCE_FILES})
+	source_group("Shaders" FILES ${SHADERS})
 	
 	include_directories(${RSSDK_INCLUDE_DIRS})
 	target_link_libraries(${EXECUTABLE_NAME} ${RSSDK_LIBRARIES})

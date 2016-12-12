@@ -27,9 +27,9 @@ Window::Window(unsigned w, unsigned h)
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
 
   _window = SDL_CreateWindow("RealSenseCG",
-                                        SDL_WINDOWPOS_CENTERED,
-                                        SDL_WINDOWPOS_CENTERED, w, h,
-                                        SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
+                             SDL_WINDOWPOS_CENTERED,
+                             SDL_WINDOWPOS_CENTERED, w, h,
+                             SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
   _context = SDL_GL_CreateContext(_window);
 }
 

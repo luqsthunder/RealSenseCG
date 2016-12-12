@@ -8,8 +8,8 @@
 #pragma warning(disable: 4251)
 #endif
 
-#include <glbinding\gl\gl.h>
-#include <glbinding\Binding.h>
+#include <glbinding/gl/gl.h>
+#include <glbinding/Binding.h>
 
 #ifndef _MSC_VER
 #pragma warning(pop)
@@ -23,6 +23,7 @@
 #include "camera.h"
 #include "shaderprogram.h"
 #include "window.h"
+#include "oclpointcloud.h"
 
 int
 main(int argc, char **argv)
@@ -44,11 +45,12 @@ main(int argc, char **argv)
   rscg::ShaderProgram pointCloudProgram{"Shaders/SimplePointCloud",
                                        {GL_VERTEX_SHADER, GL_FRAGMENT_SHADER}};
 
-  glm::mat4 proj, view;
-  proj = glm::perspective(60.f, 1366.f/768.f, 0.01f, 100.f);
-  view = glm::lookAt(glm::vec3{0.f, 0.f, -1.f}, glm::vec3{0.f, 0.f, 1.f},
-                     glm::vec3{0.f, 1.f, 0.f});
+  rscg::OclPointCloud pointCloudOcl{640, 480};
 
+  glm::mat4 proj, view;
+  proj = glm::perspective(89.f, 1366.f/768.f, 0.01f, 255.f);
+  view = glm::lookAt(glm::vec3{0.f, 0.f, -1.f}, glm::vec3{0.f, 0.f, 1.f},
+                     glm::vec3{0.f, -1.f, 0.f});
   while(running)
   {
     while(SDL_PollEvent(&event))
@@ -60,10 +62,12 @@ main(int argc, char **argv)
 
     glClearColor(0.f, 0.f, 0.f, 0.f);
     glClear(gl::GL_COLOR_BUFFER_BIT);
-
-    depthImage.update(device);
-    device.releaseFrame();
-    depthImage.draw(textureProgram.programID());
+    
+    auto imgDepth = device.fetchDepthFrame();
+    //depthImage.update(imgDepth);
+    //depthImage.draw(textureProgram.programID());
+    pointCloudOcl.update(imgDepth, device);
+    pointCloudOcl.draw(pointCloudProgram.programID(), proj * view);
 
     SDL_GL_SwapWindow(window);
   }

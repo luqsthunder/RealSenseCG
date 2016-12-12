@@ -37,7 +37,7 @@ public:
   * @brief create a image with w and h size and not change after created,
   * and create image from frame aquired from camera
   */
-  RealSenseImage(rscg::CameraDevice& device, unsigned w, unsigned h);
+  RealSenseImage(const std::vector<uint8_t> &img, unsigned w, unsigned h);
 
 /**
   * @brief default destructor
@@ -49,11 +49,9 @@ public:
   *
   * @brief
   */
-  void update(rscg::CameraDevice& device);
+  void update(const std::vector<uint8_t> &imgDepth);
 
   void draw(unsigned program) const;
-
-  void drawPointCloud(unsigned program, const glm::mat4& unfvaleu) const;
 
 /**
   * @return a array 2D with sizes of image
@@ -66,19 +64,12 @@ protected:
                       unsigned &vbo, unsigned &ebo, unsigned &vao,
                       gl::GLenum bufferType);
 
-  void updatePointCloud(const uint16_t *depthImage, 
-                        rscg::Intrinsics intrinsics,
-                        float cameraScale);
-
-  std::vector<uint8_t>  _rgb;
-
   std::vector<float> _pointCloud;
 
   unsigned _width, _height;
-  size_t _vertCont, _vertContPointCloud;
+  size_t _vertCont;
 
-  unsigned _texture, _vbo, _vao, _ebo, _vboPointCloud, _vaoPointCloud,
-           _eboPointCloud;
+  unsigned _texture, _vbo, _vao, _ebo;
 };
 
 }

@@ -15,14 +15,10 @@ class CameraDevice
 {
 public:
 
-  virtual const unsigned char* fetchDepthFrame() = 0;
-  virtual void releaseFrame() = 0;
-  virtual const rscg::Intrinsics& fetchIntrinsics() = 0;
-  virtual const float scale() const = 0;
-  virtual const std::array<unsigned, 2>& size() const;
+  virtual const std::vector<uint8_t>& fetchDepthFrame() = 0;
+  virtual const rscg::Intrinsics& intrinsics() = 0;
 
 protected:
-  std::vector<unsigned char> depthframe;
   std::array<unsigned, 2> msize;
 };
 
@@ -32,16 +28,14 @@ public:
   CameraDeviceWindows();
   ~CameraDeviceWindows();
 
-  const unsigned char* fetchDepthFrame() override;
-  void releaseFrame() override;
-  const rscg::Intrinsics& fetchIntrinsics() override;
-  const float scale() const override;
+  const std::vector<uint8_t>& fetchDepthFrame() override;
+  const rscg::Intrinsics& intrinsics() override;
 
 private:
   PXCSenseManager *sm;
-  float camScale;
-  PXCImage::ImageData data;
-  PXCImage* _image;
+
+  std::vector<uint8_t> imgdepth;
+  rscg::Intrinsics _intri;
 };
 
 }
