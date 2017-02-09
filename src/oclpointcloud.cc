@@ -188,7 +188,8 @@ loadKernelSrc(const std::string &resourcePath)
 
 using namespace rscg;
 
-OclPointCloud::OclPointCloud(unsigned width, unsigned heigth) :
+OclPointCloud::OclPointCloud(unsigned width, unsigned heigth, 
+                             unsigned textureID) :
   _width(width), _height(heigth)
 {
   cl_int ciErrNum;
@@ -259,7 +260,7 @@ OclPointCloud::OclPointCloud(unsigned width, unsigned heigth) :
   clGPUContext = clCreateContext(props, 1, &cdDevices[uiDeviceUsed], NULL, 
                                  NULL, &ciErrNum);
   using namespace gl;
-  vertices.resize(3 * _width * _height, 0);
+  vertices.resize(4 * _width * _height, 0);
 
   glGenVertexArrays(1, &_vao);
   glGenBuffers(1, &_vbo);
@@ -267,63 +268,82 @@ OclPointCloud::OclPointCloud(unsigned width, unsigned heigth) :
   glBindVertexArray(_vao);
   glBindBuffer(GL_ARRAY_BUFFER, _vbo);
 
-  glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 3 * _width * _height, 
+  glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 4 * _width * _height, 
                vertices.data(), GL_DYNAMIC_DRAW);
 
-  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float),
+  glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(float),
                         (void*)nullptr);
   glEnableVertexAttribArray(0);
 
   glBindBuffer(GL_ARRAY_BUFFER, 0);
   glBindVertexArray(0);
 
-  vboCL = clCreateFromGLBuffer(clGPUContext, CL_MEM_READ_WRITE, _vbo, 
-                                &ciErrNum);
+  glFinish();
 
-  cl_image_format imgFormat{CL_RGB, CL_UNSIGNED_INT8};
-  cl_image_desc imgDesc;
-  imgDesc.image_type = CL_MEM_OBJECT_IMAGE2D; imgDesc.image_width = _width;
-  imgDesc.image_height = _height;
-
-  std::vector<uint8_t> blackImg;
-  blackImg.resize(_width * _height * 3, 0);
-
-  depthImageCL = clCreateImage(clGPUContext, 
-                               CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY | 
-                               CL_MEM_USE_HOST_PTR,
-                               &imgFormat, &imgDesc, blackImg.data(),
+  vboCL = clCreateFromGLBuffer(clGPUContext, CL_MEM_READ_WRITE, _vbo,
                                &ciErrNum);
-
-  //depthImageCL = clCreateImage2D(cxGPUContext,
-  //                               CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY,
-  //                               &imgFormat, _width, _height, 0, 
-  //                               blackImg.data(), &ciErrNum);
+  depthImageCL = clCreateFromGLTexture(clGPUContext, CL_MEM_READ_ONLY,
+                                       (GLuint)GL_TEXTURE_2D, 0, textureID,
+                                       &ciErrNum);
+  std::cerr << oclErrorString(ciErrNum) << std::endl;
+  derivativeImg = clCreateBuffer(clGPUContext, CL_MEM_WRITE_ONLY,
+                                 sizeof(float) * _width * _height, NULL,
+                                 &ciErrNum);
+  std::cerr << oclErrorString(ciErrNum) << std::endl;
 
   cl_command_queue_properties propsqueue = 0;
   cqCommandQueue = clCreateCommandQueue(clGPUContext, cdDevices[uiDeviceUsed],
                                         propsqueue, &ciErrNum);
   auto kernelSrc = loadKernelSrc("Kernels/oclpointcloud.cl");
   const char * charPtrSrc = kernelSrc.c_str();
-  const size_t kernelSrcSize = kernelSrc.size();
-  clProgram = clCreateProgramWithSource(clGPUContext, 1, &charPtrSrc,
+  size_t kernelSrcSize = kernelSrc.size();
+  pointCloudProgramCL = clCreateProgramWithSource(clGPUContext, 1, &charPtrSrc,
                                         &kernelSrcSize, &ciErrNum);
   std::cerr << oclErrorString(ciErrNum) << std::endl;
 
-  ciErrNum = clBuildProgram(clProgram, 1, &cdDevices[uiDeviceUsed], 0, 0, 0);
+  ciErrNum = clBuildProgram(pointCloudProgramCL, 1, &cdDevices[uiDeviceUsed], 0, 0, 0);
   if(ciErrNum != CL_SUCCESS)
   {
     size_t log_size;
-    clGetProgramBuildInfo(clProgram, cdDevices[uiDeviceUsed], 
+    clGetProgramBuildInfo(pointCloudProgramCL, cdDevices[uiDeviceUsed], 
                           CL_PROGRAM_BUILD_LOG, 0, NULL, &log_size);
     char *logError = new char[log_size];
     // Get the log
-    clGetProgramBuildInfo(clProgram, cdDevices[uiDeviceUsed], 
+    clGetProgramBuildInfo(pointCloudProgramCL, cdDevices[uiDeviceUsed], 
                           CL_PROGRAM_BUILD_LOG, log_size, logError, NULL);
     std::cout << logError << std::endl;
     delete[] logError;
   }
 
-  ckKernel = clCreateKernel(clProgram, "pointcloud", &ciErrNum);
+  pointCloudKernel = clCreateKernel(pointCloudProgramCL, "pointcloud", &ciErrNum);
+  std::cerr << oclErrorString(ciErrNum) << std::endl;
+
+  kernelSrc = loadKernelSrc("Kernels/oclfinitedifference.cl");
+  charPtrSrc = kernelSrc.c_str();
+  kernelSrcSize = kernelSrc.size();
+  finiteDifferenceProgram = clCreateProgramWithSource(clGPUContext, 1, 
+                                                      &charPtrSrc,
+                                                      &kernelSrcSize, 
+                                                      &ciErrNum);
+  std::cerr << oclErrorString(ciErrNum) << std::endl;
+
+  ciErrNum = clBuildProgram(finiteDifferenceProgram, 1, 
+                            &cdDevices[uiDeviceUsed], 0, 0, 0);
+  if(ciErrNum != CL_SUCCESS)
+  {
+    size_t log_size;
+    clGetProgramBuildInfo(finiteDifferenceProgram, cdDevices[uiDeviceUsed],
+                          CL_PROGRAM_BUILD_LOG, 0, NULL, &log_size);
+    char *logError = new char[log_size];
+    // Get the log
+    clGetProgramBuildInfo(finiteDifferenceProgram, cdDevices[uiDeviceUsed],
+                          CL_PROGRAM_BUILD_LOG, log_size, logError, NULL);
+    std::cout << logError << std::endl;
+    delete[] logError;
+  }
+
+  finiteDifferenceKernel = clCreateKernel(finiteDifferenceProgram, 
+                                          "finitedifference", &ciErrNum);
   std::cerr << oclErrorString(ciErrNum) << std::endl;
 }
 
@@ -338,7 +358,7 @@ OclPointCloud::~OclPointCloud()
 
   if(cqCommandQueue) clReleaseCommandQueue(cqCommandQueue);
 
-  if(clProgram) clReleaseProgram(clProgram);
+  if(pointCloudProgramCL) clReleaseProgram(pointCloudProgramCL);
 
   using namespace gl;
 
@@ -347,48 +367,88 @@ OclPointCloud::~OclPointCloud()
 }
 
 void
-OclPointCloud::update(const std::vector<uint8_t>& depthImg, 
+OclPointCloud::update(const std::vector<uint16_t>& depthImg, 
                       rscg::CameraDevice& cam)
 {
   cl_int ciErrNum = 0;
 
   using namespace gl;
 
+  glFinish();
+  clFinish(cqCommandQueue);
+
+  ciErrNum = clEnqueueAcquireGLObjects(cqCommandQueue, 1, &vboCL, 0, 0, NULL);
+  //std::cerr << oclErrorString(ciErrNum) << std::endl;
+  ciErrNum = clEnqueueAcquireGLObjects(cqCommandQueue, 1, &depthImageCL, 0, 0, 
+                                       NULL);
+  //std::cerr << oclErrorString(ciErrNum) << std::endl;
+  clFinish(cqCommandQueue);
+
   cl_event runKernelEv;
 
-  size_t global[2] = {640, 480};
-  size_t local[2] = {32, 32};
+  size_t globalWorkSize[2] = {_width, _height};
+  size_t localWorkSize[2] = {1, 1};
 
+  cl_int widthImg = _width;
+  cl_int2 imgSize = {_width, _height};
   cl_float2 focal, pp;
   focal = {cam.intrinsics().fx, cam.intrinsics().fy};
   pp = {cam.intrinsics().ppx, cam.intrinsics().ppy};
 
-  ciErrNum = clSetKernelArg(ckKernel, 0, sizeof(cl_mem), &depthImageCL);
-  std::cerr << oclErrorString(ciErrNum) << std::endl;
+  ciErrNum = clSetKernelArg(pointCloudKernel, 0, sizeof(cl_mem), 
+                            &depthImageCL);
+  //std::cerr << oclErrorString(ciErrNum) << std::endl;
+  ciErrNum = clSetKernelArg(pointCloudKernel, 1, sizeof(cl_mem), &vboCL);
+  //std::cerr << oclErrorString(ciErrNum) << std::endl;
+  ciErrNum = clSetKernelArg(pointCloudKernel, 2, sizeof(cl_float2), &focal);
+  //std::cerr << oclErrorString(ciErrNum) << std::endl;
+  ciErrNum = clSetKernelArg(pointCloudKernel, 3, sizeof(cl_float2), &pp);
+  //std::cerr << oclErrorString(ciErrNum) << std::endl;
+  ciErrNum = clSetKernelArg(pointCloudKernel, 4, sizeof(cl_float2), &imgSize);
+  //std::cerr << oclErrorString(ciErrNum) << std::endl;
 
-  ciErrNum = clSetKernelArg(ckKernel, 1, sizeof(cl_mem), &vboCL);
-  std::cerr << oclErrorString(ciErrNum) << std::endl;
 
-  ciErrNum = clSetKernelArg(ckKernel, 2, sizeof(cl_float2), &focal);
-  std::cerr << oclErrorString(ciErrNum) << std::endl;
+  ciErrNum = clSetKernelArg(finiteDifferenceKernel, 0, sizeof(cl_mem), 
+                            &depthImageCL);
+  //std::cerr << oclErrorString(ciErrNum) << std::endl;
+  ciErrNum = clSetKernelArg(finiteDifferenceKernel, 1, sizeof(cl_mem),
+                            &derivativeImg);
+  //std::cerr << oclErrorString(ciErrNum) << std::endl;
+  ciErrNum = clSetKernelArg(finiteDifferenceKernel, 2, sizeof(cl_int), 
+                            &widthImg);
+  //std::cerr << oclErrorString(ciErrNum) << std::endl;
 
-  ciErrNum = clSetKernelArg(ckKernel, 3, sizeof(cl_float2), &pp);
-  std::cerr << oclErrorString(ciErrNum) << std::endl;
+  ciErrNum = clEnqueueNDRangeKernel(cqCommandQueue, pointCloudKernel, 2, NULL,
+                                    globalWorkSize, localWorkSize, 0, 0, NULL);
 
-  clEnqueueNDRangeKernel(cqCommandQueue, ckKernel, 2, NULL, global, local, 0, 
-                         NULL, NULL);
-  std::cerr << oclErrorString(ciErrNum) << std::endl;
+  ciErrNum = clEnqueueNDRangeKernel(cqCommandQueue, finiteDifferenceKernel, 2, 
+                                    NULL, globalWorkSize, localWorkSize, 
+                                    0, 0, NULL);
 
-  clWaitForEvents(1, &runKernelEv);
+  //std::cerr << oclErrorString(ciErrNum) << std::endl;
 
-  /*float xDepth, yDepth, zDepth;
+  //clWaitForEvents(1, &runKernelEv);
+  clFinish(cqCommandQueue);
+
+  clEnqueueReleaseGLObjects(cqCommandQueue, 1, &vboCL, 0, 0, NULL);
+  //std::cerr << oclErrorString(ciErrNum) << std::endl;
+  clEnqueueReleaseGLObjects(cqCommandQueue, 1, &depthImageCL, 0, 0, NULL);
+  //std::cerr << oclErrorString(ciErrNum) << std::endl;
+
+  clFinish(cqCommandQueue);
+
+
+ /* if(vertices.size() < _width * _height * 4)
+    vertices.resize(_width * _height * 4);
+
+  float xDepth, yDepth, zDepth;
   auto intrinsics = cam.intrinsics();
 
   for(size_t y = 0; y < _height; ++y)
   {
     for(size_t x = 0; x < _width; ++x)
     {
-      auto depthValue = depthImg[(x * 3) + (y * 3 * _width)];
+      auto depthValue = depthImg[(x * 4) + (y * 4 * _width)];
       if(depthValue != 0)
       {
         float depthValueNorm = depthValue;
@@ -401,23 +461,25 @@ OclPointCloud::update(const std::vector<uint8_t>& depthImg,
         xDepth = (((float)depthValueNorm)) *
                  ((((float)x) - intrinsics.ppx) / intrinsics.fx);
 
-        vertices[x * 3 + (y * 3 * _width)]      = xDepth;
-        vertices[x * 3 + (y * 3 * _width) + 1]  = yDepth;
-        vertices[x * 3 + (y * 3 * _width) + 2]  = zDepth;
+        vertices[x * 4 + (y * 4 * _width)]      = xDepth;
+        vertices[x * 4 + (y * 4 * _width) + 1]  = yDepth;
+        vertices[x * 4 + (y * 4 * _width) + 2]  = zDepth;
+        vertices[x * 4 + (y * 4 * _width) + 3]  = 1;
       }
       else
       {
-        vertices[x * 3 + (y * 3 * _width)]     = -1;
-        vertices[x * 3 + (y * 3 * _width) + 1] = -1;
-        vertices[x * 3 + (y * 3 * _width) + 2] = -1;
+        vertices[x * 4 + (y * 4 * _width)]     = -1;
+        vertices[x * 4 + (y * 4 * _width) + 1] = -1;
+        vertices[x * 4 + (y * 4 * _width) + 2] = -1;
+        vertices[x * 4 + (y * 4 * _width) + 3] =  1;
       }
     }
   }
 
-  glBindBuffer(GL_ARRAY_BUFFER, _vbo);
-  glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(float) * vertices.size(),
+  gl::glBindBuffer(gl::GL_ARRAY_BUFFER, _vbo);
+  gl::glBufferSubData(gl::GL_ARRAY_BUFFER, 0, sizeof(float) * vertices.size(),
                   vertices.data());
-  glBindBuffer(GL_ARRAY_BUFFER, 0);*/
+  gl::glBindBuffer(gl::GL_ARRAY_BUFFER, 0);*/
 }
 
 void

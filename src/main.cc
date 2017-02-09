@@ -1,5 +1,6 @@
 #include <iostream>
 #include <memory>
+#include <climits>
 
 #include <SDL.h>
 
@@ -45,12 +46,13 @@ main(int argc, char **argv)
   rscg::ShaderProgram pointCloudProgram{"Shaders/SimplePointCloud",
                                        {GL_VERTEX_SHADER, GL_FRAGMENT_SHADER}};
 
-  rscg::OclPointCloud pointCloudOcl{640, 480};
+  rscg::OclPointCloud pointCloudOcl{640, 480, depthImage.texture()};
 
   glm::mat4 proj, view;
-  proj = glm::perspective(89.f, 1366.f/768.f, 0.01f, 255.f);
+  proj = glm::perspective(45.f, 1366.f/768.f, 0.01f, (float)USHRT_MAX);
   view = glm::lookAt(glm::vec3{0.f, 0.f, -1.f}, glm::vec3{0.f, 0.f, 1.f},
                      glm::vec3{0.f, -1.f, 0.f});
+
   while(running)
   {
     while(SDL_PollEvent(&event))
@@ -63,9 +65,10 @@ main(int argc, char **argv)
     glClearColor(0.f, 0.f, 0.f, 0.f);
     glClear(gl::GL_COLOR_BUFFER_BIT);
     
-    auto imgDepth = device.fetchDepthFrame();
-    //depthImage.update(imgDepth);
-    //depthImage.draw(textureProgram.programID());
+    device.fetchDepthFrame();
+    auto imgDepth = device.getDepthFrame4Chanels();
+    depthImage.update(imgDepth);
+    depthImage.draw(textureProgram.programID());
     pointCloudOcl.update(imgDepth, device);
     pointCloudOcl.draw(pointCloudProgram.programID(), proj * view);
 

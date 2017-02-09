@@ -76,6 +76,14 @@ RealSenseImage::RealSenseImage(unsigned int w, unsigned int h) : _width(w),
   glGenBuffers(1, &_vbo);
   glGenBuffers(1, &_ebo);
 
+  glBindTexture(GL_TEXTURE_2D, _texture);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16UI, _width, _height, 0, 
+               GL_RGBA_INTEGER, GL_UNSIGNED_SHORT, NULL);
+  std::cout << glGetError() << std::endl;
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glBindTexture(GL_TEXTURE_2D, 0);
+
   createVertices({
    // vertices and texture
    -1.f,  1.f,  0.f, 0.f, 0.f,
@@ -92,7 +100,7 @@ RealSenseImage::RealSenseImage(unsigned int w, unsigned int h) : _width(w),
   _vertCont = 6;
 }
 
-RealSenseImage::RealSenseImage(const std::vector<uint8_t> &img, unsigned w,
+RealSenseImage::RealSenseImage(const std::vector<uint16_t> &img, unsigned w,
                                unsigned h)  : RealSenseImage(w, h)
 {
   update(img);
@@ -120,6 +128,12 @@ RealSenseImage::draw(unsigned program) const
 
   glBindTexture(GL_TEXTURE_2D, 0);
   glBindVertexArray(0);
+}
+
+gl::GLuint 
+RealSenseImage::texture()
+{
+  return _texture;
 }
 
 void
@@ -153,17 +167,21 @@ RealSenseImage::createVertices(const std::vector<float> &vertAndTex,
 }
 
 void
-RealSenseImage::update(const std::vector<uint8_t> &imgDepth)
+RealSenseImage::update(const std::vector<uint16_t> &imgDepth)
 {
   glBindTexture(gl::GL_TEXTURE_2D, _texture);
 
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, _width, _height, 0, GL_RGB,
-               GL_UNSIGNED_BYTE, imgDepth.data());
-  
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  //glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, _width, _height, 0, GL_RGB,
+  //             GL_UNSIGNED_INT, imgDepth.data());
+
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16UI, _width, _height, 0, GL_RGB_INTEGER,
+               GL_UNSIGNED_SHORT, imgDepth.data());
+
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 
   glBindTexture(GL_TEXTURE_2D, 0);
+
 }
 
 /*void

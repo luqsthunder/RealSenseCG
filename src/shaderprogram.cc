@@ -145,8 +145,10 @@ CreateShader(const std::string &programSrc, GLenum shaderType)
 
   auto status = CheckShaderError(shader, GL_COMPILE_STATUS, false);
   if(status.length() > 5)
+  {
+    std::cout << status << std::endl;
     throw std::runtime_error(status);
-
+  }
   return shader;
 }
 

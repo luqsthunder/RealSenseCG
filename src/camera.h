@@ -14,8 +14,9 @@ namespace rscg
 class CameraDevice
 {
 public:
-
-  virtual const std::vector<uint8_t>& fetchDepthFrame() = 0;
+  virtual void fetchDepthFrame() = 0;
+  virtual const std::vector<uint16_t>& getDepthFrame4Chanels() = 0;
+  virtual const std::vector<uint16_t>& getDepthFrame1Chanels() = 0;
   virtual const rscg::Intrinsics& intrinsics() = 0;
 
 protected:
@@ -28,13 +29,17 @@ public:
   CameraDeviceWindows();
   ~CameraDeviceWindows();
 
-  const std::vector<uint8_t>& fetchDepthFrame() override;
+  void fetchDepthFrame() override;
+
+  const std::vector<uint16_t>& getDepthFrame4Chanels() override;
+  const std::vector<uint16_t>& getDepthFrame1Chanels() override;
   const rscg::Intrinsics& intrinsics() override;
 
 private:
   PXCSenseManager *sm;
 
-  std::vector<uint8_t> imgdepth;
+  std::vector<uint16_t> imgdepth;
+  std::vector<uint16_t> _imgdepth1c;
   rscg::Intrinsics _intri;
 };
 

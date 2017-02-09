@@ -37,7 +37,7 @@ public:
   * @brief create a image with w and h size and not change after created,
   * and create image from frame aquired from camera
   */
-  RealSenseImage(const std::vector<uint8_t> &img, unsigned w, unsigned h);
+  RealSenseImage(const std::vector<uint16_t> &img, unsigned w, unsigned h);
 
 /**
   * @brief default destructor
@@ -49,7 +49,7 @@ public:
   *
   * @brief
   */
-  void update(const std::vector<uint8_t> &imgDepth);
+  void update(const std::vector<uint16_t> &imgDepth);
 
   void draw(unsigned program) const;
 
@@ -57,6 +57,8 @@ public:
   * @return a array 2D with sizes of image
   */
   std::vector<unsigned> size();
+
+  gl::GLuint texture();
 
 protected:
   void createVertices(const std::vector<float> &vertsAndTex,

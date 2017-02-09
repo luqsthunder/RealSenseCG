@@ -1,11 +1,16 @@
-#version 330 core
+#version 450 core
 in vec2 texCoord;
+in vec3 fragColorToVert;
 
-uniform sampler2D uTexture;
+uniform usampler2D uTexture;
 
 out vec4 color;
 
 void main()
 {
-  color = texture(uTexture, texCoord);
+  uvec4 pixel = texture(uTexture, texCoord);
+  float singlepxval =  pixel.x / 5535.f;
+                               //32767.f;
+                               //52428.f;
+  color = vec4(singlepxval, singlepxval, singlepxval, 1);
 }

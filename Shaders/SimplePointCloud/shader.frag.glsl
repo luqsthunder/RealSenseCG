@@ -1,10 +1,10 @@
 #version 450 core
 
-in vec3 colorToFrag;
+in vec4 colorToFrag;
 
 out vec4 color;
 
 void main()
 {
-  color = vec4(1.0, 0, 0, 1.0);
+  color = vec4(.0, colorToFrag.z / 5535.f , .0, 1.0);
 }

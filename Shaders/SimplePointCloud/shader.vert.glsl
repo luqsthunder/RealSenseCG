@@ -1,13 +1,13 @@
 #version 450 core
 
-layout(location = 0)in vec3 aVertices;
+layout(location = 0)in vec4 aVertices;
 
-out vec3 colorToFrag;
+out vec4 colorToFrag;
 
 uniform mat4 uViewProj;
 
 void main()
 {
-  gl_Position = uViewProj * vec4(aVertices, 1.0);
+  gl_Position = uViewProj * aVertices;
   colorToFrag = aVertices;
 }
