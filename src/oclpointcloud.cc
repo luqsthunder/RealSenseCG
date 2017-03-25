@@ -188,8 +188,7 @@ loadKernelSrc(const std::string &resourcePath)
 
 using namespace rscg;
 
-OclPointCloud::OclPointCloud(unsigned width, unsigned heigth, 
-                             unsigned textureID) :
+OclPointCloud::OclPointCloud(unsigned width, unsigned heigth) :
   _width(width), _height(heigth)
 {
   cl_int ciErrNum;
@@ -259,41 +258,12 @@ OclPointCloud::OclPointCloud(unsigned width, unsigned heigth,
   };
   clGPUContext = clCreateContext(props, 1, &cdDevices[uiDeviceUsed], NULL, 
                                  NULL, &ciErrNum);
-  using namespace gl;
-  vertices.resize(4 * _width * _height, 0);
-
-  glGenVertexArrays(1, &_vao);
-  glGenBuffers(1, &_vbo);
-
-  glBindVertexArray(_vao);
-  glBindBuffer(GL_ARRAY_BUFFER, _vbo);
-
-  glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 4 * _width * _height, 
-               vertices.data(), GL_DYNAMIC_DRAW);
-
-  glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(float),
-                        (void*)nullptr);
-  glEnableVertexAttribArray(0);
-
-  glBindBuffer(GL_ARRAY_BUFFER, 0);
-  glBindVertexArray(0);
-
-  glFinish();
-
-  vboCL = clCreateFromGLBuffer(clGPUContext, CL_MEM_READ_WRITE, _vbo,
-                               &ciErrNum);
-  depthImageCL = clCreateFromGLTexture(clGPUContext, CL_MEM_READ_ONLY,
-                                       (GLuint)GL_TEXTURE_2D, 0, textureID,
-                                       &ciErrNum);
-  std::cerr << oclErrorString(ciErrNum) << std::endl;
-  derivativeImg = clCreateBuffer(clGPUContext, CL_MEM_WRITE_ONLY,
-                                 sizeof(float) * _width * _height, NULL,
-                                 &ciErrNum);
-  std::cerr << oclErrorString(ciErrNum) << std::endl;
+  // end of context initializing
 
   cl_command_queue_properties propsqueue = 0;
   cqCommandQueue = clCreateCommandQueue(clGPUContext, cdDevices[uiDeviceUsed],
                                         propsqueue, &ciErrNum);
+
   auto kernelSrc = loadKernelSrc("Kernels/oclpointcloud.cl");
   const char * charPtrSrc = kernelSrc.c_str();
   size_t kernelSrcSize = kernelSrc.size();
@@ -345,6 +315,22 @@ OclPointCloud::OclPointCloud(unsigned width, unsigned heigth,
   finiteDifferenceKernel = clCreateKernel(finiteDifferenceProgram, 
                                           "finitedifference", &ciErrNum);
   std::cerr << oclErrorString(ciErrNum) << std::endl;
+
+
+  //end of building and creating kernels cl
+
+  differentialImgInput = clCreateBuffer(clGPUContext, CL_MEM_READ_ONLY,
+                                        sizeof(uint16_t) * _width * _height,
+                                        NULL, NULL);
+  differentialImgOutput = clCreateBuffer(clGPUContext, CL_MEM_WRITE_ONLY,
+                                         sizeof(uint16_t) * _width * _height,
+                                         NULL, NULL);
+
+  clSetKernelArg(finiteDifferenceKernel, 0, sizeof(cl_mem),
+                 differentialImgInput);
+
+  clSetKernelArg(finiteDifferenceKernel, 0, sizeof(cl_mem),
+                 differentialImgInput);
 }
 
 
@@ -353,17 +339,15 @@ OclPointCloud::~OclPointCloud()
   if(clGPUContext) clReleaseContext(clGPUContext);
   if(cdDevices) delete[] cdDevices;
 
-  if(vboCL) clReleaseMemObject(vboCL);
-  if(depthImageCL) clReleaseMemObject(depthImageCL);
-
   if(cqCommandQueue) clReleaseCommandQueue(cqCommandQueue);
 
   if(pointCloudProgramCL) clReleaseProgram(pointCloudProgramCL);
 
   using namespace gl;
 
-  glDeleteVertexArrays(1, &_vao);
-  glDeleteBuffers(1, &_vbo);
+  glDeleteVertexArrays(1, &quadVao);
+  glDeleteBuffers(1, &quadVbo);
+  glDeleteBuffers(1, &quadEbo);
 }
 
 void
@@ -371,131 +355,10 @@ OclPointCloud::update(const std::vector<uint16_t>& depthImg,
                       rscg::CameraDevice& cam)
 {
   cl_int ciErrNum = 0;
-
-  using namespace gl;
-
-  glFinish();
-  clFinish(cqCommandQueue);
-
-  ciErrNum = clEnqueueAcquireGLObjects(cqCommandQueue, 1, &vboCL, 0, 0, NULL);
-  //std::cerr << oclErrorString(ciErrNum) << std::endl;
-  ciErrNum = clEnqueueAcquireGLObjects(cqCommandQueue, 1, &depthImageCL, 0, 0, 
-                                       NULL);
-  //std::cerr << oclErrorString(ciErrNum) << std::endl;
-  clFinish(cqCommandQueue);
-
-  cl_event runKernelEv;
-
-  size_t globalWorkSize[2] = {_width, _height};
-  size_t localWorkSize[2] = {1, 1};
-
-  cl_int widthImg = _width;
-  cl_int2 imgSize = {_width, _height};
-  cl_float2 focal, pp;
-  focal = {cam.intrinsics().fx, cam.intrinsics().fy};
-  pp = {cam.intrinsics().ppx, cam.intrinsics().ppy};
-
-  ciErrNum = clSetKernelArg(pointCloudKernel, 0, sizeof(cl_mem), 
-                            &depthImageCL);
-  //std::cerr << oclErrorString(ciErrNum) << std::endl;
-  ciErrNum = clSetKernelArg(pointCloudKernel, 1, sizeof(cl_mem), &vboCL);
-  //std::cerr << oclErrorString(ciErrNum) << std::endl;
-  ciErrNum = clSetKernelArg(pointCloudKernel, 2, sizeof(cl_float2), &focal);
-  //std::cerr << oclErrorString(ciErrNum) << std::endl;
-  ciErrNum = clSetKernelArg(pointCloudKernel, 3, sizeof(cl_float2), &pp);
-  //std::cerr << oclErrorString(ciErrNum) << std::endl;
-  ciErrNum = clSetKernelArg(pointCloudKernel, 4, sizeof(cl_float2), &imgSize);
-  //std::cerr << oclErrorString(ciErrNum) << std::endl;
-
-
-  ciErrNum = clSetKernelArg(finiteDifferenceKernel, 0, sizeof(cl_mem), 
-                            &depthImageCL);
-  //std::cerr << oclErrorString(ciErrNum) << std::endl;
-  ciErrNum = clSetKernelArg(finiteDifferenceKernel, 1, sizeof(cl_mem),
-                            &derivativeImg);
-  //std::cerr << oclErrorString(ciErrNum) << std::endl;
-  ciErrNum = clSetKernelArg(finiteDifferenceKernel, 2, sizeof(cl_int), 
-                            &widthImg);
-  //std::cerr << oclErrorString(ciErrNum) << std::endl;
-
-  ciErrNum = clEnqueueNDRangeKernel(cqCommandQueue, pointCloudKernel, 2, NULL,
-                                    globalWorkSize, localWorkSize, 0, 0, NULL);
-
-  ciErrNum = clEnqueueNDRangeKernel(cqCommandQueue, finiteDifferenceKernel, 2, 
-                                    NULL, globalWorkSize, localWorkSize, 
-                                    0, 0, NULL);
-
-  //std::cerr << oclErrorString(ciErrNum) << std::endl;
-
-  //clWaitForEvents(1, &runKernelEv);
-  clFinish(cqCommandQueue);
-
-  clEnqueueReleaseGLObjects(cqCommandQueue, 1, &vboCL, 0, 0, NULL);
-  //std::cerr << oclErrorString(ciErrNum) << std::endl;
-  clEnqueueReleaseGLObjects(cqCommandQueue, 1, &depthImageCL, 0, 0, NULL);
-  //std::cerr << oclErrorString(ciErrNum) << std::endl;
-
-  clFinish(cqCommandQueue);
-
-
- /* if(vertices.size() < _width * _height * 4)
-    vertices.resize(_width * _height * 4);
-
-  float xDepth, yDepth, zDepth;
-  auto intrinsics = cam.intrinsics();
-
-  for(size_t y = 0; y < _height; ++y)
-  {
-    for(size_t x = 0; x < _width; ++x)
-    {
-      auto depthValue = depthImg[(x * 4) + (y * 4 * _width)];
-      if(depthValue != 0)
-      {
-        float depthValueNorm = depthValue;
-
-        zDepth =  ((float)depthValueNorm);
-
-        yDepth = (((float)depthValueNorm)) *
-                 ((((float)y) - intrinsics.ppy) / intrinsics.fy);
-
-        xDepth = (((float)depthValueNorm)) *
-                 ((((float)x) - intrinsics.ppx) / intrinsics.fx);
-
-        vertices[x * 4 + (y * 4 * _width)]      = xDepth;
-        vertices[x * 4 + (y * 4 * _width) + 1]  = yDepth;
-        vertices[x * 4 + (y * 4 * _width) + 2]  = zDepth;
-        vertices[x * 4 + (y * 4 * _width) + 3]  = 1;
-      }
-      else
-      {
-        vertices[x * 4 + (y * 4 * _width)]     = -1;
-        vertices[x * 4 + (y * 4 * _width) + 1] = -1;
-        vertices[x * 4 + (y * 4 * _width) + 2] = -1;
-        vertices[x * 4 + (y * 4 * _width) + 3] =  1;
-      }
-    }
-  }
-
-  gl::glBindBuffer(gl::GL_ARRAY_BUFFER, _vbo);
-  gl::glBufferSubData(gl::GL_ARRAY_BUFFER, 0, sizeof(float) * vertices.size(),
-                  vertices.data());
-  gl::glBindBuffer(gl::GL_ARRAY_BUFFER, 0);*/
 }
 
 void
 OclPointCloud::draw(unsigned shader, const glm::mat4 &p) const
 {
-  using namespace gl;
-  glUseProgram(shader);
-
-  auto loc = glGetUniformLocation(shader, "uViewProj");
-  glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(p));
-
-  glBindVertexArray(_vao);
-
-  glDrawArrays(GL_POINTS, 0, _width * _height);
-
-  glBindVertexArray(0);
-  glUseProgram(0);
 }
 

@@ -1,8 +1,8 @@
 __constant sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE | 
                                CLK_ADDRESS_REPEAT | CLK_FILTER_NEAREST;
 
-__kernel void finitedifference(__read_only image2d_t input, 
-                               __global float *output, int width)
+__kernel void finitedifference(__constant uint *input, 
+                               __global uint *output, int width)
 {
   const int2 pos = {get_global_id(0), get_global_id(1)};
 

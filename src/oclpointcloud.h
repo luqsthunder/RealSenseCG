@@ -19,7 +19,7 @@ namespace rscg
 class OclPointCloud
 {
 public:
-  OclPointCloud(unsigned width, unsigned heigth, unsigned textureID);
+  OclPointCloud(unsigned width, unsigned heigth);
   ~OclPointCloud();
 
   void update(const std::vector<uint16_t>& depthImg, rscg::CameraDevice& cam);
@@ -32,11 +32,13 @@ private:
   cl_uint           uiDevCount;
   cl_command_queue  cqCommandQueue;
   cl_kernel         pointCloudKernel, finiteDifferenceKernel;
-  cl_mem            vboCL, depthImageCL, derivativeImg;
+  cl_mem            differentialImgInput, differentialImgOutput;
   cl_program        pointCloudProgramCL, finiteDifferenceProgram;
 
   unsigned _width, _height;
-  unsigned _vbo, _vao, _ebo;
+  unsigned textureGLID, quadVao, quadVbo, quadEbo;
+
+  std::vector<unsigned> finiteDifferenceImgCPU;
 
   std::vector<float> vertices;
 };
