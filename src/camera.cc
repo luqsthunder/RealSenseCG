@@ -17,7 +17,7 @@ CameraDeviceWindows::CameraDeviceWindows() : sm(nullptr)
     throw std::runtime_error("could not create camera manager");
 
   sm->EnableStream(PXCCapture::STREAM_TYPE_DEPTH, 640, 480, 60);
-
+  sm->EnableStream(PXCCapture::STREAM_TYPE_COLOR, 640, 480, 60);
   status = sm->Init();
 
   imgdepth.resize(640 * 480 * 4, 0);
@@ -30,11 +30,63 @@ CameraDeviceWindows::CameraDeviceWindows() : sm(nullptr)
   auto pp = device->QueryDepthPrincipalPoint();
 
   _intri = Intrinsics{pp.x, pp.y, focus.x, focus.y};
+  imgdepth3.resize(640 * 480 * 3);
+
+  _colorim.resize(3 * 480 * 640);
 }
 
 CameraDeviceWindows::~CameraDeviceWindows()
 {
   sm->Release();
+}
+
+void
+CameraDeviceWindows::fetchColorFrame()
+{
+  /// This function blocks until a sample is ready
+  if(sm->AcquireFrame(true) < PXC_STATUS_NO_ERROR)
+    std::cerr << "could not aquire frame" << std::endl;
+
+  PXCCapture::Sample *sample = sm->QuerySample();
+  auto image = sample->color;
+
+  PXCImage::ImageData imageData;
+  PXCImage::ImageInfo imageInfo = image->QueryInfo();
+
+  /// Below is a common AcquireAccess - Process - ReleaseAccess pattern
+  /// for RealSense images.
+  pxcStatus status;
+
+  pxcI32 sizeX = imageInfo.width;  // Number of pixels in X
+  pxcI32 sizeY = imageInfo.height;  // Number of pixels in Y
+
+  status = image->AcquireAccess(PXCImage::ACCESS_READ, 
+                                PXCImage::PixelFormat::PIXEL_FORMAT_RGB24,
+                                &imageData);
+
+ /* if(imageData.pitches[0] != 2 * sizeX)
+    throw std::runtime_error("Unexpected data in buffer");
+*/
+
+  if(status == PXC_STATUS_NO_ERROR)
+  {
+    /// becouse every pixel is store as 2 bytes, and obviously pitch is 2
+    /// times width, changing array pointer to a double size will work 
+    /// equals as manipulating bytes
+    uint8_t* imre = (uint8_t*)imageData.planes[0];
+
+    for(pxcI32 y = 0; y < sizeY; y++)
+    {
+      for(pxcI32 x = 0; x < sizeX; x++)
+      {
+        _colorim[3 * (x + y * 640)]     = imre[3 * (x + y * 640)];
+        _colorim[3 * (x + y * 640) + 1] = imre[3 * (x + y * 640) + 1];
+        _colorim[3 * (x + y * 640) + 2] = imre[3 * (x + y * 640) + 2];
+      }
+    }
+  }
+  image->ReleaseAccess(&imageData);
+  sm->ReleaseFrame();
 }
 
 
@@ -83,17 +135,15 @@ CameraDeviceWindows::fetchDepthFrame()
       {
 
         uint16_t depth = imageArray[x + y * sizeX];
-        /* uint16_t byte1 = (uint16_t)imageArray[pixelPitch * x +
-        y*imageData.pitches[0]];
-        uint16_t byte2 = (uint16_t)(imageArray[pixelPitch * x +
-        y*imageData.pitches[0] + 1]) << 8;
 
-        uint16_t depth = byte1 + byte2;*/
+        imgdepth3[(x * 3) + (y * (sizeX * 3))] = depth;
+        imgdepth3[(x * 3) + (y * (sizeX * 3)) + 1] = depth;
+        imgdepth3[(x * 3) + (y * (sizeX * 3)) + 2] = depth;
 
-        imgdepth[(x * 3) + (y * (sizeX * 3))] = depth;
-        imgdepth[(x * 3) + (y * (sizeX * 3)) + 1] = depth;
-        imgdepth[(x * 3) + (y * (sizeX * 3)) + 2] = depth;
-        imgdepth[(x * 3) + (y * (sizeX * 3)) + 3] = USHRT_MAX;
+        imgdepth[(x * 4) + (y * (sizeX * 4))] = depth;
+        imgdepth[(x * 4) + (y * (sizeX * 4)) + 1] = depth;
+        imgdepth[(x * 4) + (y * (sizeX * 4)) + 2] = depth;
+        imgdepth[(x * 4) + (y * (sizeX * 4)) + 3] = USHRT_MAX;
 
         _imgdepth1c[x + (y * sizeX)] = depth;
       }
@@ -101,6 +151,18 @@ CameraDeviceWindows::fetchDepthFrame()
   }
   image->ReleaseAccess(&imageData);
   sm->ReleaseFrame();
+}
+
+const std::vector<uint16_t>&
+CameraDeviceWindows::getDepthFrame3Chanels()
+{
+  return imgdepth3;
+}
+
+const std::vector<uint8_t>&
+CameraDeviceWindows::getColorFrame()
+{
+  return _colorim;
 }
 
 const std::vector<uint16_t>&

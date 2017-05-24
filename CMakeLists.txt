@@ -44,9 +44,22 @@ find_package(OpenGL REQUIRED)
 find_package(GLBINDING REQUIRED)
 find_package(OpenCL REQUIRED)
 find_package(GLM REQUIRED)
+find_package(OpenCV REQUIRED)
+find_package(Eigen3 REQUIRED)
 
 if(GLM_FOUND)
   include_directories(${GLM_INCLUDE_DIRS})
+endif()
+
+if(EIGEN3_FOUND)
+  include_directories(${EIGEN3_INCLUDE_DIRS})
+endif()
+
+if(OpenCV_FOUND)
+  include_directories(${OpenCV_INCLUDE_DIR})
+  target_link_libraries(${EXECUTABLE_NAME} ${OpenCV_LIBS})
+else()
+  message("GLBINDING NOT FOUND")
 endif()
 
 if(SDL2_FOUND)

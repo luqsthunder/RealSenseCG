@@ -329,8 +329,10 @@ OclPointCloud::OclPointCloud(unsigned width, unsigned heigth) :
   clSetKernelArg(finiteDifferenceKernel, 0, sizeof(cl_mem),
                  differentialImgInput);
 
-  clSetKernelArg(finiteDifferenceKernel, 0, sizeof(cl_mem),
-                 differentialImgInput);
+  clSetKernelArg(finiteDifferenceKernel, 1, sizeof(cl_mem),
+                 differentialImgOutput);
+  clSetKernelArg(finiteDifferenceKernel, 2, sizeof(cl_uint),
+                 &_width);
 }
 
 
@@ -355,6 +357,13 @@ OclPointCloud::update(const std::vector<uint16_t>& depthImg,
                       rscg::CameraDevice& cam)
 {
   cl_int ciErrNum = 0;
+
+  cl_event eventCL;
+
+  clEnqueueWriteBuffer(cqCommandQueue, differentialImgInput, true, 
+                       0, sizeof(uint16_t) * _width * _height, 
+                       depthImg.data(), 0, NULL, &eventCL);
+
 }
 
 void
