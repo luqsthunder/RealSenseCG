@@ -1,5 +1,4 @@
-#ifndef __OCL_POINT_CLOUD_H__
-#define __OCL_POINT_CLOUD_H__
+#pragma once
 
 #define CL_VERSION_1_2 1
 
@@ -44,5 +43,3 @@ private:
 };
 
 }
-
-#endif

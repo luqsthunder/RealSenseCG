@@ -6,6 +6,7 @@
 #include <algorithm>
 
 #include <opencv2\opencv.hpp>
+#include <opencv2\dnn.hpp>
 
 #include <SDL.h>
 
@@ -35,11 +36,24 @@
 #include "window.h"
 #include "oclpointcloud.h"
 
-void
-toPPM(const cv::Mat &a, bool dist = true);
+uint16_t maxDepth = 3000;
 
 void
-toPPMImg(const cv::Mat &a);
+toPPM(const cv::Mat &a, uint32_t currPic);
+
+
+void
+toPPMDist(const cv::Mat &a, uint32_t currPic);
+
+void
+toPPMColor(const cv::Mat &a, uint32_t currPic);
+
+
+void
+toPPMBin(const cv::Mat &a, uint32_t currPic);
+
+void
+toPPMFDepth(const cv::Mat &a, uint32_t currPic);
 
 void
 toOCV(const std::vector<uint16_t> &in,
@@ -75,12 +89,15 @@ toOCVColor(const std::vector<uint8_t> &in, cv::Mat &out)
 int
 main(int argc, char **argv)
 {
+  uint16_t currMax = maxDepth, normValue = 0;
   auto device = rscg::CameraDeviceWindows();
 
-  uint32_t picCount = 0;
+  uint32_t picCount = 0, pics, picFps = 0;
+  bool print = false, setToStop = false;
 
-  cv::Mat frame{480, 640, CV_8UC1}, distance{480, 640, CV_16U}, 
-          color{480, 640, CV_8UC3};
+  cv::Mat frame{480, 640, CV_8UC1, cv::Scalar(0)}, distance{480, 640, CV_16UC1, cv::Scalar(0)}, 
+          color{480, 640, CV_8UC3, cv::Scalar(0)}, frame2{480, 640, CV_8UC1, cv::Scalar(0)}, 
+          fDepth{480, 640, CV_8UC1, cv::Scalar(0)};
 
   int thresh = 500;
 
@@ -88,76 +105,115 @@ main(int argc, char **argv)
   cv::Point min_loc, max_loc;
 
   cv::namedWindow("frame", 0);
+  cv::namedWindow("frame2", 0);
   cv::namedWindow("distance", 0);
   cv::namedWindow("color", 0);
   cv::createTrackbar("thresh", "frame", &thresh, 1000);
 
   std::vector<uint16_t> imDepth;
 
-  std::vector<cv::Mat> imgsDepths, imgsDist, imgsColor;
+  std::vector<cv::Mat> imgsDepth, imgsDist, imgsColor, fullDepth, binimgs;
 
-  imgsDepths.resize(1000);
+  imgsDepth.resize(1000);
   imgsColor.resize(1000);
   imgsDist.resize(1000);
+  fullDepth.resize(1000);
+  binimgs.resize(500);
 
-  for(auto &it : imgsDepths) it = cv::Mat{480, 640, CV_8UC1};
-  for(auto &it : imgsDist)   it = cv::Mat{480, 640, CV_16U};
-  for(auto &it : imgsColor)  it = cv::Mat{480, 640, CV_8UC3};
+  uint16_t value = 0;
 
-  int photoCount;
+  cv::Ptr<cv::dnn::Importer> importer;
+  try
+  {
+    importer = cv::dnn::createTensorflowImporter("C:/Users/lucas/Documents/Pro"
+                                                 "jects/classifier_fold1.h5");
+  }
+  catch(const cv::Exception &e)
+  {
+    std::cerr << e.msg << std::endl;
+    exit(1);
+  }
 
-  for(;;)
+  cv::dnn::Net net;
+  importer->populateNet(net);
+  importer.release();
+
+  while(! setToStop)
   {
     device.fetchDepthFrame();
     device.fetchColorFrame();
 
     imDepth = device.getDepthFrame1Chanels();
-    toOCVColor(device.getColorFrame(), color);
 
+    currMax = maxDepth;
     for(size_t y = 0; y < 640; ++y)
     {
       for(size_t x = 0; x < 480; ++x)
       {
-        frame.at<uint8_t>(x, y) = (((imDepth[x * 640 + y] < (uint16_t)thresh) && (imDepth[x * 640 + y] > 10)) ? 255 : 0);
+        value = imDepth[x * 640 + y];
+        if(maxDepth < value)
+          maxDepth = value;
+
+        normValue = (uint8_t)((255.00) * ((double)value / (double)maxDepth));
+
+        frame.at<uint8_t>(x, y) = (uint8_t)(( (value < (uint16_t)thresh) 
+                                              && (value > 10)) ? 255 : 0);
+
+        frame2.at<uint8_t>(x, y) = (((value < (uint16_t)thresh)
+                                     && (value > 10)) ? value : 0);
       }
     }
     cv::distanceTransform(frame, distance, CV_DIST_L2, 3, CV_32F);
-
-    /*cv::GaussianBlur(distance, distance, cv::Size(25, 25), 0.8, 0.8,
-    cv::BORDER_DEFAULT); */
 
     cv::normalize(distance, distance, 0, 1., cv::NORM_MINMAX);
 
     cv::minMaxLoc(distance, &min, &max, &min_loc, &max_loc);
 
-    int radius = distance.at<float>(max_loc.y, max_loc.x);
-
-    cv::circle(frame, max_loc, radius, cv::Scalar(0, 255, 0), 2, 8, 0);
-
     imshow("frame", frame);
     imshow("distance", distance);
     imshow("color", color);
+    imshow("frame2", frame2);
 
-    if((char)cv::waitKey(5) == 'q') break;
-    if((char)cv::waitKey(5) == 32) 
-    {
-
-    }
+    char reskey = (char)cv::waitKey(60);
+    
+    if(reskey == 'q')
+      setToStop = true;
   }
 
   return 0;
 }
 
-int cont = 0;
-int contdist = 0;
 
 void
-toPPMImg(const cv::Mat &a)
+toPPMColor(const cv::Mat &a, uint32_t currPic)
 {
   std::ofstream file;
-  std::string aux;
-  int contAux = cont;
-  file.open("imagecolor" + aux + std::to_string(contAux) + ".ppm", std::ios::out);
+  file.open("image_color" + std::to_string(currPic) +".ppm", std::ios::out);
+
+  file << "P3\n640 480\n256\n";
+
+  Pixel value;
+
+  for(size_t y = 0; y < 480; ++y)
+  {
+    for(size_t x = 0; x < 640; ++x)
+    {
+      value = a.at<Pixel>(y, x);
+
+      file << std::to_string(value.z) << " " << std::to_string(value.y) << " "
+           << std::to_string(value.x) << "  ";
+    }
+    file << std::endl;
+  }
+}
+
+void
+toPPMDist(const cv::Mat &a, uint32_t currPic)
+{
+  std::ofstream file;
+  file.open("image_dist" + std::to_string(currPic) + ".ppm", std::ios::out);
+
+  file << "P3\n640 480\n256\n";
 
   uint8_t value;
 
@@ -165,33 +221,7 @@ toPPMImg(const cv::Mat &a)
   {
     for(size_t x = 0; x < 640; ++x)
     {
-      file << std::to_string(a.at<uint8_t>(x, y)) << " " 
-           << std::to_string(a.at<uint8_t>(x, y + 1)) << " "
-           << std::to_string(a.at<uint8_t>(x, y + 2)) << "  ";
-    }
-    file << std::endl;
-  }
-}
-
-void
-toPPM(const cv::Mat &a, bool dist)
-{
-  std::ofstream file;
-  std::string aux = dist ? "" : "_distance";
-  int contAux = dist ? contdist : cont;
-  if(dist)
-    contdist++;
-  else
-    cont++;
-  file.open("imagedepth" + aux + std::to_string(contAux) + ".ppm", std::ios::out);
-
-  uint16_t value;
-
-  for(size_t y = 0; y < 480; ++y)
-  {
-    for(size_t x = 0; x < 640; ++x)
-    {
-      value = a.at<uint16_t>(x, y);
+      value = 255 * a.at<float>(y, x);
 
       file << std::to_string(value) << " " << std::to_string(value) << " "
         << std::to_string(value) << "  ";
@@ -200,82 +230,92 @@ toPPM(const cv::Mat &a, bool dist)
   }
 }
 
-  /*
-  void
-  printToFile(const std::vector<uint16_t> &a)
-  {
+void
+toPPM(const cv::Mat &a, uint32_t currPic)
+{
   std::ofstream file;
-  file.open("imagedepth.txt", std::ios::out);
+  file.open("image_depth" + std::to_string(currPic) + ".ppm", std::ios::out);
+
+  file << "P3\n640 480\n256\n";
 
   uint16_t value;
+  uint8_t normValue;
 
   for(size_t y = 0; y < 480; ++y)
   {
-  for(size_t x = 0; x < 640; ++x)
+    for(size_t x = 0; x < 640; ++x)
+    {
+      value = a.at<uint16_t>(y, x) ;
+
+      normValue = (uint8_t)((255.00) * ((double)value / (double)maxDepth));
+
+      //if(value != 0)
+      //  std::cout << "lol\n";
+
+      file << std::to_string(normValue) << " " 
+           << std::to_string(normValue) << " "
+           << std::to_string(normValue) << "  ";
+    }
+    file << std::endl;
+  }
+}
+
+void
+toPPMFDepth(const cv::Mat &a, uint32_t currPic)
+{
+  std::ofstream file;
+  file.open("image_depth_full" + std::to_string(currPic) + ".ppm", std::ios::out);
+
+  file << "P3\n640 480\n256\n";
+
+  uint16_t value;
+  uint8_t normValue;
+
+  for(size_t y = 0; y < 480; ++y)
   {
-  value = a[(x * 3) + (y * (640* 3))];
+    for(size_t x = 0; x < 640; ++x)
+    {
+      value = a.at<uint16_t>(y, x);
 
-  file << std::to_string(value) << " " << std::to_string(value) << " "
-  << std::to_string(value) << "  ";
-  }
-  file << std::endl;
-  }
-  }
+      normValue = (uint8_t)((255.00) * ((double)value / (double)maxDepth));
 
-  int
-  main(int argc, char **argv)
+      //if(value != 0)
+      //  std::cout << "lol\n";
+
+      file << std::to_string(normValue) << " "
+        << std::to_string(normValue) << " "
+        << std::to_string(normValue) << "  ";
+    }
+    file << std::endl;
+  }
+}
+
+void
+toPPMBin(const cv::Mat &a, uint32_t currPic)
+{
+  std::ofstream file;
+  file.open("image_depth_bin" + std::to_string(currPic) + ".ppm", std::ios::out);
+
+  file << "P3\n640 480\n256\n";
+
+  uint16_t value;
+  uint8_t normValue;
+
+  for(size_t y = 0; y < 480; ++y)
   {
-  using namespace gl;
+    for(size_t x = 0; x < 640; ++x)
+    {
+      value = a.at<uint8_t>(y, x);
 
-  rscg::Window window{1366, 768};
+      normValue = (uint8_t)value;//(uint8_t)((255.00) * ((double)value / (double)maxDepth));
 
-  glbinding::Binding::initialize();
+      //if(value != 0)
+      //  std::cout << "lol\n";
 
-  auto device = rscg::CameraDeviceWindows{};
-
-  bool running = true;
-  SDL_Event event;
-  rscg::RealSenseImage depthImage{640, 480};
-
-  rscg::ShaderProgram textureProgram{"Shaders/simpleshader",
-  {GL_VERTEX_SHADER, GL_FRAGMENT_SHADER}};
-  rscg::ShaderProgram pointCloudProgram{"Shaders/SimplePointCloud",
-  {GL_VERTEX_SHADER, GL_FRAGMENT_SHADER}};
-
-  // rscg::OclPointCloud pointCloudOcl{640, 480};
-
-  glm::mat4 proj, view;
-  proj = glm::perspective(45.f, 1366.f/768.f, 0.01f, (float)USHRT_MAX);
-  view = glm::lookAt(glm::vec3{0.f, 0.f, -1.f}, glm::vec3{0.f, 0.f, 1.f},
-  glm::vec3{0.f, -1.f, 0.f});
-
-  while(running)
-  {
-  auto imgDepth = device.getDepthFrame4Chanels();
-
-  while(SDL_PollEvent(&event))
-  {
-  if((event.type == SDL_QUIT) || ((event.type == SDL_KEYUP) &&
-  event.key.keysym.sym == SDLK_ESCAPE))
-  running = false;
-  if(event.type == SDL_KEYUP && event.key.keysym.sym == SDLK_SPACE)
-  {
-  toPPM(imgDepth);
-  printToFile(imgDepth);
+      file << std::to_string(normValue) << " "
+        << std::to_string(normValue) << " "
+        << std::to_string(normValue) << "  ";
+    }
+    file << std::endl;
   }
-  }
-
-  glClearColor(0.f, 0.f, 0.f, 0.f);
-  glClear(gl::GL_COLOR_BUFFER_BIT);
-
-  device.fetchDepthFrame();
-  depthImage.update(imgDepth);
-  depthImage.draw(textureProgram.programID());
-  //pointCloudOcl.update(imgDepth, device);
-  //pointCloudOcl.draw(pointCloudProgram.programID(), proj * view);
-
-  SDL_GL_SwapWindow(window);
-  }
-  return 0;
-  }
-  */
+}
