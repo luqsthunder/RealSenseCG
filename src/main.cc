@@ -8,6 +8,10 @@
 #include <opencv2\opencv.hpp>
 #include <opencv2\dnn.hpp>
 
+#include <SFML/Network.hpp>
+
+//#include <tiny_dnn/tiny_dnn.h>
+
 #include <SDL.h>
 
 #ifdef _MSC_VER
@@ -37,6 +41,8 @@
 #include "oclpointcloud.h"
 
 uint16_t maxDepth = 3000;
+
+#define MAXLINE 500000
 
 void
 toPPM(const cv::Mat &a, uint32_t currPic);
@@ -86,6 +92,40 @@ toOCVColor(const std::vector<uint8_t> &in, cv::Mat &out)
   }
 }
 
+void classifyImgNet(sf::TcpSocket &sock, const std::vector<int> &im, 
+                    cv::Size imSize)
+{
+    int len;
+    int count=0;
+    char sendline[MAXLINE], recvline[MAXLINE];
+    std::string ok;
+
+    for(int y = 0; y < imSize.height; ++y)
+    {
+      sf::Packet pack, recv;
+      pack.append((char *)im[y * imSize.width], 
+                  sizeof(int) * imSize.width);
+
+      if(sock.send(pack) != sf::Socket::Done)
+      {
+        std::cout << "error " << std::endl;
+        exit(4);
+      }
+
+      /*sock.receive(recv);
+      recv >> ok;
+      std::cout << ok << std::endl;
+      if(ok == "ok")
+      {
+        std::cout << "error " << std::endl;
+        exit(4);
+      }*/
+    }
+    sf::Packet res;
+    sock.receive(res);
+}
+
+
 int
 main(int argc, char **argv)
 {
@@ -111,6 +151,8 @@ main(int argc, char **argv)
   cv::createTrackbar("thresh", "frame", &thresh, 1000);
 
   std::vector<uint16_t> imDepth;
+  std::vector<int> imToClassify;
+  imToClassify.resize(480 * 640);
 
   std::vector<cv::Mat> imgsDepth, imgsDist, imgsColor, fullDepth, binimgs;
 
@@ -122,21 +164,13 @@ main(int argc, char **argv)
 
   uint16_t value = 0;
 
-  cv::Ptr<cv::dnn::Importer> importer;
-  try
+  sf::TcpSocket sock;
+  sf::Socket::Status status = sock.connect("127.0.0.1", 31000);
+  if(status != sf::Socket::Done)
   {
-    importer = cv::dnn::createTensorflowImporter("C:/Users/lucas/Documents/Pro"
-                                                 "jects/classifier_fold1.h5");
+    std::cerr << "erro on connecting" << std::endl;
+    exit(4);
   }
-  catch(const cv::Exception &e)
-  {
-    std::cerr << e.msg << std::endl;
-    exit(1);
-  }
-
-  cv::dnn::Net net;
-  importer->populateNet(net);
-  importer.release();
 
   while(! setToStop)
   {
@@ -155,6 +189,7 @@ main(int argc, char **argv)
           maxDepth = value;
 
         normValue = (uint8_t)((255.00) * ((double)value / (double)maxDepth));
+        imToClassify[x * 640 + y] = (int)value;
 
         frame.at<uint8_t>(x, y) = (uint8_t)(( (value < (uint16_t)thresh) 
                                               && (value > 10)) ? 255 : 0);
@@ -168,6 +203,14 @@ main(int argc, char **argv)
     cv::normalize(distance, distance, 0, 1., cv::NORM_MINMAX);
 
     cv::minMaxLoc(distance, &min, &max, &min_loc, &max_loc);
+
+    for(size_t y = 0; y < 480; ++y)
+    {
+      for(size_t x = 0; x < 640; ++x)
+        imToClassify[x + y * 640] = (255 * distance.at<float>(y, x));
+    }
+
+    classifyImgNet(sock, imToClassify, {640, 480});
 
     imshow("frame", frame);
     imshow("distance", distance);
