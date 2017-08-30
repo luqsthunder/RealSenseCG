@@ -95,16 +95,13 @@ toOCVColor(const std::vector<uint8_t> &in, cv::Mat &out)
 void classifyImgNet(sf::TcpSocket &sock, const std::vector<int> &im, 
                     cv::Size imSize)
 {
-    int len;
-    int count=0;
-    char sendline[MAXLINE], recvline[MAXLINE];
-    std::string ok;
-
     for(int y = 0; y < imSize.height; ++y)
     {
       sf::Packet pack, recv;
       pack.append((char *)im[y * imSize.width], 
                   sizeof(int) * imSize.width);
+      //while(pack.endOfPacket());
+      std::cout << pack.getDataSize() << std::endl;
 
       if(sock.send(pack) != sf::Socket::Done)
       {
@@ -112,14 +109,10 @@ void classifyImgNet(sf::TcpSocket &sock, const std::vector<int> &im,
         exit(4);
       }
 
-      /*sock.receive(recv);
-      recv >> ok;
-      std::cout << ok << std::endl;
-      if(ok == "ok")
-      {
-        std::cout << "error " << std::endl;
-        exit(4);
-      }*/
+      sock.receive(recv);
+
+      std::cout << ((char *)recv.getData())[0] << ((char *)recv.getData())[1] 
+                << std::endl;
     }
     sf::Packet res;
     sock.receive(res);
