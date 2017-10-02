@@ -58,7 +58,7 @@ CameraDeviceWindows::fetchColorFrame()
   pxcStatus status;
 
   pxcI32 sizeX = imageInfo.width;  // Number of pixels in X
-  pxcI32 sizeY = imageInfo.height;  // Number of pixels in Y
+  pxcI32 sizeY = imageInfo.height; // Number of pixels in Y
 
   status = image->AcquireAccess(PXCImage::ACCESS_READ, 
                                 PXCImage::PixelFormat::PIXEL_FORMAT_RGB24,

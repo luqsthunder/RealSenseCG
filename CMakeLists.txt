@@ -28,7 +28,13 @@ set(SOURCE_FILES
   ${PROJECT_SOURCE_DIR}/src/oclpointcloud.h
   ${PROJECT_SOURCE_DIR}/src/oclpointcloud.cc
 
-  ${PROJECT_SOURCE_DIR}/src/RSCGutils.h)
+  ${PROJECT_SOURCE_DIR}/src/RSCGutils.h
+  
+  ${PROJECT_SOURCE_DIR}/src/rect.h
+  ${PROJECT_SOURCE_DIR}/src/rect.cc
+  
+  ${PROJECT_SOURCE_DIR}/src/graphprobs.h
+  ${PROJECT_SOURCE_DIR}/src/graphprobs.cc)
 
 
  set(SHADERS ${PROJECT_SOURCE_DIR}/Shaders/simpleshader/shader.frag.glsl
