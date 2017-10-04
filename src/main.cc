@@ -187,7 +187,7 @@ main(int argc, char **argv)
 
   bool printing = false;
 
-  cv::Mat boundedDist = cv::Mat::ones(cv::Size{50, 50}, CV_8UC1);
+  cv::Mat h;
 
   while(! setToStop || printing)
   {
@@ -248,7 +248,8 @@ main(int argc, char **argv)
     imshow("frame", cir);
     imshow("distance", distWithRect);
     imshow("color", color);
-    imshow("frame2", boundedDist);
+    if(! h.empty())
+      imshow("frame2", h);
 
     char reskey = (char)cv::waitKey(60);
     
@@ -262,17 +263,27 @@ main(int argc, char **argv)
     
     if(printing)
     {
-      boundedDist = cv::Mat::ones(cv::Size{boundingBox.h, boundingBox.w}, 
-                                  CV_8UC1);
-      for(size_t y = boundingBox.y, y1 = 0;
-          y < cv::min(boundingBox.w + boundingBox.y, 480); ++y, ++y1)
+      cv::Mat boundedDist = cv::Mat::ones(cv::Size{boundingBox.w, 
+                                                   boundingBox.h}, CV_8UC1);
+      h = boundedDist;
+      size_t y, y1, x, x1;
+      y = 0;
+      y1 = boundingBox.y;
+      for(;y < boundingBox.h; ++y, ++y1)
       {
-        for(size_t x = boundingBox.x, x1 = 0; 
-            x < cv::min(boundingBox.h + boundingBox.x, 480); ++x, ++x1)
+        x = 0;
+        x1 = boundingBox.x;
+        for(;x < boundingBox.w; ++x, ++x1)
         {
-          boundedDist.at<uint8_t>(x1, y1) = 255 * dist.at<float>(y, x);
+          float v = 0;
+          v = dist.at<float>(std::min((size_t)479, y1),
+                             std::min((size_t)639, x1));
+
+          boundedDist.at<uint8_t>(y, x) = 255 * v;
         }
       }
+
+
 
       imgsColor.at(cont) = color.clone();
       imgsDist.at(cont) = boundedDist.clone();
