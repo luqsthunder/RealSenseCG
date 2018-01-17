@@ -10,6 +10,8 @@ cmake_install.cmake
 install_manifest.txt
 CTestTestfile.cmake
 
+*.jpg
+*.png
 
 ### Intellij ###
 # Covers JetBrains IDEs: IntelliJ, RubyMine, PhpStorm, AppCode, PyCharm, CLion, Android Studio and Webstorm
