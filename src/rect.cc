@@ -15,7 +15,7 @@ rscg::boundingSquare(const cv::Mat &im)
   {
     for(int x = 0; x < 480; ++x)
     {
-      if(im.at<float>(x, y) > 0)
+      if(im.at<uint8_t>(x, y) > 0)
       {
         if(rangeX.first > x)
           rangeX.first = x;
@@ -30,7 +30,7 @@ rscg::boundingSquare(const cv::Mat &im)
   {
     for(int y = 0; y < 640; ++y)
     {
-      if(im.at<float>(x, y) > 0)
+      if(im.at<uint8_t>(x, y) > 0)
       {
         if(rangeY.first > y)
           rangeY.first = y;
@@ -43,10 +43,11 @@ rscg::boundingSquare(const cv::Mat &im)
   dist1 = rangeY.second - rangeY.first;
   dist2 = rangeX.second - rangeX.first;
 
-  bounds.y = rangeX.first;
-  bounds.x = rangeY.first;
-  bounds.w = (dist1 > dist2) ? dist1 : dist2;
-  bounds.h = bounds.w;
+  auto max = (dist1 > dist2) ? dist1 : dist2;
 
+  bounds.y = (dist1 < dist2) ? rangeX.first : rangeX.first - ((max - dist2) / 2);
+  bounds.x = (dist1 < dist2) ? rangeY.first - ((max - dist1) / 2) : rangeY.first;
+  bounds.h = bounds.w = max;
+  
   return bounds;
 }

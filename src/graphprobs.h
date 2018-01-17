@@ -6,6 +6,7 @@
 
 namespace rscg
 {
+
 class GraphProbs
 {
 public:
