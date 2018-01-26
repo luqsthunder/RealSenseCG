@@ -25,22 +25,39 @@ import scipy.misc
 import os, os.path
 
 
+'''
+images = self.imageGenerator.flow_from_directory(directory + str(it),
+                                                 target_size=(50, 50),
+                                                 color_mode='grayscale',
+                                                 batch_size=32,
+                                                 class_mode='categorical')
+                                                 
+for fileName in os.listdir(fileName):
+    if os.path.isfile(fileName):
+       print(fileName)
+'''
+
+
 class ImageSequenceDataGenerator:
-    def __init__(self):
-        self.imageGenerator = ImageDataGenerator(rescale=1./255)
+    def __init__(self, rescale):
+        self.imageGenerator = ImageDataGenerator(rescale)
 
     def flow_from_directory(self, directory):
-        n = len([name for name in os.listdir(directory) if os.path.isdir(name)])
-        output = []
-        for it in range(0, n):
-            images = self.imageGenerator.flow_from_directory(directory + str(it),
-                                                             target_size=(50, 50),
-                                                             color_mode='grayscale',
-                                                             batch_size=32,
-                                                             class_mode='categorical')
-            output += images
 
-        return output
+        sequences = []
+        for folderClasses in os.listdir(directory):
+            if os.path.isdir(directory + '/' + folderClasses):
+                samples_folder = directory + '/' + folderClasses
+                for folder_image_sequence_samples in os.listdir(samples_folder):
+                    if os.path.isdir(samples_folder + '/' + folder_image_sequence_samples):
+                        folder_with_image_sequence = samples_folder
+                        image = self.imageGenerator.flow_from_directory(folder_with_image_sequence,
+                                                                        target_size=(50, 50),
+                                                                        color_mode='grayscale',
+                                                                        batch_size=32,
+                                                                        class_mode='categorical')
+                        sequences.insert(len(sequences), image)
+        return sequences
 
 # Initialising the CNN
 
@@ -53,11 +70,13 @@ classifier.add(TimeDistributed(MaxPooling2D(pool_size=(2, 2))))
 classifier.add(TimeDistributed(Conv2D(8, (3, 3), input_shape=(25, 25, 1),
                                       activation='relu')))
 classifier.add(TimeDistributed(Flatten()))
-classifier.add(LSTM(2, activation='relu', input_shape=(30, 25*25)))
+classifier.add(LSTM(2, activation='softmax', input_shape=(30, 25*25)))
 #classifier.add(Dense(units=30, activation='relu'))
 classifier.add(Dense(units=2, activation='softmax'))
 classifier.compile(optimizer='adam', loss='categorical_crossentropy',
                    metrics=['accuracy', metrics.categorical_accuracy])
+
+classifier.summary()
 
 # Part 2 - Fitting the CNN to the images
 
@@ -66,10 +85,10 @@ train_datagen = ImageSequenceDataGenerator(rescale=1./255)
 
 test_datagen = ImageSequenceDataGenerator(rescale=1./255)
 
-training_set = train_datagen.flow_from_directory('../cnn_hand_deep/F'
+training_set = train_datagen.flow_from_directory('../Gestures/dynamic_poses/F'
                                                  + str(iFold) + '/train')
 
-test_set = test_datagen.flow_from_directory('../cnn_hand_deep/F'
+test_set = test_datagen.flow_from_directory('../Gestures/dynamic_poses/F'
                                             + str(iFold) + '/test')
 
 # Fit the classifier
