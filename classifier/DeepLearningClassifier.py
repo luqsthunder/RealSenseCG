@@ -13,9 +13,17 @@ from keras.layers import LSTM
 from keras.layers import MaxPooling2D
 from keras.layers import Activation
 from keras.preprocessing.image import ImageDataGenerator
+from keras.preprocessing.image import Iterator
 from keras.preprocessing.sequence import pad_sequences
 from keras.layers import TimeDistributed
 from keras import metrics
+from keras import backend as K
+
+import os
+import threading
+import warnings
+import multiprocessing.pool
+from functools import partial
 
 import socket
 import struct
@@ -24,42 +32,86 @@ import scipy.misc
 
 import os, os.path
 
+class SequenceImageIterator(Iterator):
+    def __init__(self, directory, image_data_generator,
+                 target_size=(256, 256), color_mode='rgb',
+                 classes=None, class_mode='categorical',
+                 batch_size=32, shuffle=True, seed=None,
+                 data_format=None, save_to_dir=None,
+                 save_prefix='', save_format='png',
+                 follow_links=False, interpolation='nearest'):
 
-'''
-images = self.imageGenerator.flow_from_directory(directory + str(it),
-                                                 target_size=(50, 50),
-                                                 color_mode='grayscale',
-                                                 batch_size=32,
-                                                 class_mode='categorical')
-                                                 
-for fileName in os.listdir(fileName):
-    if os.path.isfile(fileName):
-       print(fileName)
-'''
+        if data_format is None:
+            data_format = K.image_data_format()
+        self.directory = directory
+        self.image_data_generator = image_data_generator
+        self.target_size = tuple(target_size)
+        if color_mode not in {'rgb', 'grayscale'}:
+            raise ValueError('Invalid color mode:', color_mode,
+                             '; expected "rgb" or "grayscale".')
+        self.color_mode = color_mode
+        self.data_format = data_format
+        if self.color_mode == 'rgb':
+            if self.data_format == 'channels_last':
+                self.image_shape = self.target_size + (3,)
+            else:
+                self.image_shape = (3,) + self.target_size
+        else:
+            if self.data_format == 'channels_last':
+                self.image_shape = self.target_size + (1,)
+            else:
+                self.image_shape = (1,) + self.target_size
+        if class_mode not in {'categorical', 'binary', 'sparse',
+                              'input', None}:
+            raise ValueError('Invalid class_mode:', class_mode,
+                             '; expected one of "categorical", '
+                             '"binary", "sparse", "input"'
+                             ' or None.')
+        self.classes = classes
+        self.class_mode = class_mode
+        self.interpolation = interpolation
+        white_list_formats = {'png', 'jpg', 'jpeg', 'bmp', 'ppm'}
+
+        if not classes:
+            classes = []
+            for subdir in sorted(os.listdir(directory)):
+                if os.path.isdir(os.path.join(directory, subdir)):
+                    classes.append(subdir)
+
+        # contar os diretorios de classes e armazenar nome dos diretorios
+        self.num_classes = len(classes)
+        self.class_indices = dict(zip(classes, range(len(classes))))
+        self.num_classes = len(classes)
+
+        self.samples = 0
+
+        # salvar sequencias por classes
+        self.sequencesPerClass = []
+        self.sequencesImgsPerClass = []
+        for className in self.class_indices:
+            # salvando a quantidade de sequencias por classe = total samples
+            self.samples += len(os.listdir(directory + '/' + className))
+            seqDirNames = sorted(os.listdir(directory + '/' + className))
+            self.sequencesPerClass.append(seqDirNames)
+            seqClassImgs = []
+            # lendo images para cada sequencia
+            for seqName in seqDirNames:
+               seqClassImgs.append(sorted(os.listdir(directory + '/' +
+                                                     className + '/' +
+                                                     seqName), key=len))
+            self.sequencesPerClass.append(seqClassImgs)
 
 
-class ImageSequenceDataGenerator:
-    def __init__(self, rescale):
-        self.imageGenerator = ImageDataGenerator(rescale)
+        super(SequenceImageIterator, self).__init__(self.samples, batch_size,
+                                                    shuffle, seed)
 
-    def flow_from_directory(self, directory):
+    def _get_batches_of_transformed_samples(self, index_array):
 
-        sequences = []
-        for folderClasses in os.listdir(directory):
-            if os.path.isdir(directory + '/' + folderClasses):
-                samples_folder = directory + '/' + folderClasses
-                for folder_image_sequence_samples in os.listdir(samples_folder):
-                    if os.path.isdir(samples_folder + '/' + folder_image_sequence_samples):
-                        folder_with_image_sequence = samples_folder
-                        image = self.imageGenerator.flow_from_directory(folder_with_image_sequence,
-                                                                        target_size=(50, 50),
-                                                                        color_mode='grayscale',
-                                                                        batch_size=32,
-                                                                        class_mode='categorical')
-                        sequences.insert(len(sequences), image)
-        return sequences
+        print("oi")
 
-# Initialising the CNN
+
+
+# Initialising the LSTM + CNN per Timestep
 
 
 classifier = Sequential()
@@ -81,25 +133,21 @@ classifier.summary()
 # Part 2 - Fitting the CNN to the images
 
 iFold = 1
-train_datagen = ImageSequenceDataGenerator(rescale=1./255)
+dirname = '../Gestures/dynamic_poses/F1/train'
 
-test_datagen = ImageSequenceDataGenerator(rescale=1./255)
-
-training_set = train_datagen.flow_from_directory('../Gestures/dynamic_poses/F'
-                                                 + str(iFold) + '/train')
-
-test_set = test_datagen.flow_from_directory('../Gestures/dynamic_poses/F'
-                                            + str(iFold) + '/test')
+seqIt = SequenceImageIterator(dirname, ImageDataGenerator(rescale=1./255),
+                              target_size=(50, 50), color_mode='grayscale',
+                              batch_size=32, class_mode='categorical')
 
 # Fit the classifier
 
-
+'''
 score = classifier.fit_generator(training_set,
                                  steps_per_epoch=40,
                                  epochs=25,
                                  validation_data=test_set,
                                  validation_steps=test_set.samples/32)
-
+'''
 # %%%%%%%  SERVIDOR  %%%%%%%%%%%%%%
 
 TCP_IP = '127.0.0.1'

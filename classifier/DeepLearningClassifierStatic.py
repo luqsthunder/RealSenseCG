@@ -4,50 +4,59 @@
 tvieira@ic.ufal.br
 """
 
-#%% Importing the Keras libraries and packages
+# Importing the Keras libraries and packages
+
+
 from keras.models import Sequential
 from keras.layers import Conv2D
 from keras.layers import MaxPooling2D
 from keras.layers import Flatten
 from keras.layers import Dense
-
-#%% Initialising the CNN
-classifier = Sequential()
-classifier.add(Conv2D(32, (3, 3), input_shape = (50, 50, 1), activation = 'relu'))
-classifier.add(MaxPooling2D(pool_size = (2, 2)))
-classifier.add(Flatten())
-classifier.add(Dense(units = 100, activation = 'relu'))
-classifier.add(Dense(units = 40, activation = 'softmax'))
-classifier.compile(optimizer = 'adam', loss = 'categorical_crossentropy', metrics = ['accuracy'])
-
-#%% Part 2 - Fitting the CNN to the images
 from keras.preprocessing.image import ImageDataGenerator
 
+import socket
+import struct
+import numpy as np
+import scipy.misc
+
+# Initialising the CNN
+classifier = Sequential()
+classifier.add(Conv2D(32, (3, 3), input_shape=(50, 50, 1), activation='relu'))
+classifier.add(MaxPooling2D(pool_size=(2, 2)))
+classifier.add(Flatten())
+#classifier.add(Dense(units=100, activation='relu'))
+classifier.add(Dense(units=14, activation='softmax'))
+classifier.compile(optimizer='adam', loss='categorical_crossentropy',
+                   metrics=['accuracy'])
+
+classifier.summary()
+
+# Part 2 - Fitting the CNN to the images
+
+
 iFold = 1
-train_datagen = ImageDataGenerator(rescale = 1./255)
+train_datagen = ImageDataGenerator(rescale=1./255)
 
-test_datagen = ImageDataGenerator(rescale = 1./255)
+test_datagen = ImageDataGenerator(rescale=1./255)
 
-training_set = train_datagen.flow_from_directory('C:/Users/lucas/Documents/Projects/DL LSTM/cnn_bb/F1/train',
-                                                 target_size=(50, 50),
-                                                 color_mode='grayscale',
-                                                 batch_size=32,
-                                                 class_mode='categorical')
+training_set = train_datagen.flow_from_directory(
+  'C:/Users/lucas/Documents/Projects/DL LSTM/cnn_bb/F1/train',
+  target_size=(50, 50),
+  color_mode='grayscale',
+  batch_size=32,
+  class_mode='categorical')
 
-
-
-
-test_set = test_datagen.flow_from_directory('C:/Users/lucas/Documents/Projects/DL LSTM/cnn_bb/F1/test',
-                                            target_size=(50, 50),
-                                            color_mode='grayscale',
-                                            batch_size=32,
-                                            class_mode='categorical',
-                                            shuffle=False)
-
-
-
+test_set = test_datagen.flow_from_directory(
+  'C:/Users/lucas/Documents/Projects/DL LSTM/cnn_bb/F1/test',
+  target_size=(50, 50),
+  color_mode='grayscale',
+  batch_size=32,
+  class_mode='categorical',
+  shuffle=False)
 
 # Fit the classifier
+
+
 score = classifier.fit_generator(training_set,
                                  steps_per_epoch=40,
                                  epochs=25,
