@@ -70,7 +70,6 @@ class SequenceImageIterator(Iterator):
         self.classes = classes
         self.class_mode = class_mode
         self.interpolation = interpolation
-        white_list_formats = {'png', 'jpg', 'jpeg', 'bmp', 'ppm'}
 
         if not classes:
             classes = []
@@ -90,24 +89,39 @@ class SequenceImageIterator(Iterator):
         self.sequencesImgsPerClass = []
         for className in self.class_indices:
             # salvando a quantidade de sequencias por classe = total samples
-            self.samples += len(os.listdir(directory + '/' + className))
             seqDirNames = sorted(os.listdir(directory + '/' + className))
+            self.samples += len(seqDirNames)
             self.sequencesPerClass.append(seqDirNames)
             seqClassImgs = []
             # lendo images para cada sequencia
             for seqName in seqDirNames:
-               seqClassImgs.append(sorted(os.listdir(directory + '/' +
-                                                     className + '/' +
-                                                     seqName), key=len))
-            self.sequencesPerClass.append(seqClassImgs)
+                self.classes
+                seqClassImgs.append(sorted(os.listdir(directory + '/' +
+                                                      className + '/' +
+                                                      seqName), key=len))
+            self.sequencesImgsPerClass.append(seqClassImgs)
+
+        print("found %d sequences belonging to %d classes",
+              self.samples, len(self.class_indices))
+
+        self.classes = np.zeros((self.samples,), dtype='int32')
+        sumN = 0
+        for k, v in self.class_indices.items():
+            seqDirNames = sorted(os.listdir(directory + '/' + k))
+            self.classes[sumN:sumN+len(seqDirNames)] = np.full(len(seqDirNames),v)
+            sumN += len(seqDirNames)
 
 
         super(SequenceImageIterator, self).__init__(self.samples, batch_size,
                                                     shuffle, seed)
 
     def _get_batches_of_transformed_samples(self, index_array):
-
-        print("oi")
+        batch_x = np.zeros(30 * self.batch_index * 50 * 50)
+        batch_x.reshape((self.batch_size, 30, 50, 50, 1))
+        batch_y = np.zeros(self.batch_size, len(self.class_indices))
+        for it, label in enumerate(self.classes[index_array]):
+            batch_y[it, label] = 1
+        return batch_x, batch_y
 
 
 
@@ -141,13 +155,13 @@ seqIt = SequenceImageIterator(dirname, ImageDataGenerator(rescale=1./255),
 
 # Fit the classifier
 
-'''
-score = classifier.fit_generator(training_set,
-                                 steps_per_epoch=40,
-                                 epochs=25,
-                                 validation_data=test_set,
-                                 validation_steps=test_set.samples/32)
-'''
+
+score = classifier.fit_generator(seqIt,
+                                 steps_per_epoch=40
+                                 ,epochs=25)
+                                 #,validation_data=test_set
+                                 #,validation_steps=test_set.samples/32)
+
 # %%%%%%%  SERVIDOR  %%%%%%%%%%%%%%
 
 TCP_IP = '127.0.0.1'
