@@ -116,9 +116,13 @@ class SequenceImageIterator(Iterator):
                                                     shuffle, seed)
 
     def _get_batches_of_transformed_samples(self, index_array):
-        batch_x = np.zeros(30 * self.batch_index * 50 * 50)
-        batch_x.reshape((self.batch_size, 30, 50, 50, 1))
-        batch_y = np.zeros(self.batch_size, len(self.class_indices))
+        batch_x = np.zeros(30 * self.batch_size * 50 * 50, dtype=K.floatx())
+        batch_x = batch_x.reshape((self.batch_size, 30, 50, 50, 1))
+
+        print(len(self.class_indices))
+
+        batch_y = np.zeros((self.batch_size, len(self.class_indices)),
+                            dtype=K.floatx())
         for it, label in enumerate(self.classes[index_array]):
             batch_y[it, label] = 1
         return batch_x, batch_y
