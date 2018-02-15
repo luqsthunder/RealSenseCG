@@ -14,6 +14,8 @@ from keras.layers import MaxPooling2D
 from keras.layers import Activation
 from keras.preprocessing.image import ImageDataGenerator
 from keras.preprocessing.image import Iterator
+from keras.preprocessing.image import load_img
+from keras.preprocessing.image import img_to_array
 from keras.preprocessing.sequence import pad_sequences
 from keras.layers import TimeDistributed
 from keras import metrics
@@ -120,6 +122,21 @@ class SequenceImageIterator(Iterator):
         batch_x = batch_x.reshape((self.batch_size, 30, 50, 50, 1))
 
         print(len(self.class_indices))
+
+        grayscale = self.color_mode == "grayscale"
+
+        for i1, j in enumerate(index_array):
+            cls = int(j / self.batch_size)
+            curSeq = j % self.batch_size
+            for i2, it in enumerate(self.sequencesImgsPerClass[cls][curSeq]):
+                name = self.directory + "/P" + str(cls + 1) + "/" + self.sequencesPerClass[cls][curSeq] + "/" + it
+                img = load_img(name, grayscale=grayscale,
+                               target_size=self.target_size,
+                               interpolation=self.interpolation)
+                x = img_to_array(img, data_format=self.data_format)
+                x = self.image_data_generator.random_transform(x)
+                x = self.image_data_generator.standardize(x)
+                batch_x[i1][i2] = x
 
         batch_y = np.zeros((self.batch_size, len(self.class_indices)),
                             dtype=K.floatx())
