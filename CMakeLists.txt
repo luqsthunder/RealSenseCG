@@ -5,7 +5,7 @@ set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake" ${CMAKE_MODULE_PATH})
 
 set(EXECUTABLE_NAME RealSenseCG)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -IC:/Users/lucas/Documents/libs/opencv/build/include /LIBPATH:C:/Users/lucas/Documents/libs/opencv/build/x64/vc14/lib opencv_world330d.lib")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
 
 set(SOURCE_FILES
   ${PROJECT_SOURCE_DIR}/src/main.cc

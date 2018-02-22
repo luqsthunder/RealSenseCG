@@ -4,15 +4,14 @@
 #include <climits>
 #include <vector>
 #include <algorithm>
-
+#include <thread>
+#include <future>
 #include <cstdio>
 
-#include <opencv2\opencv.hpp>
-#include <opencv2\dnn.hpp>
+#include <opencv2/opencv.hpp>
+#include <opencv2/dnn.hpp>
 
 #include <SFML/Network.hpp>
-
-//#include <tiny_dnn/tiny_dnn.h>
 
 #include <SDL.h>
 
@@ -31,9 +30,6 @@
 #ifndef _MSC_VER
 #pragma warning(pop)
 #endif
-
-#include <glm/glm.hpp>
-#include <glm/gtx/transform.hpp>
 
 #include "realsenseimage.h"
 #include "camera.h"
@@ -168,6 +164,8 @@ main(int argc, char **argv)
           frame2Color    {480, 640, CV_8UC3,  cv::Scalar(0)},
           graphIm        {480, 640, CV_8UC3,  cv::Scalar(0)},
           fDepth         {480, 640, CV_8UC1,  cv::Scalar(0)},
+          im5050         { 50,  50, CV_8UC1,  cv::Scalar(0)},
+          im5050Color    { 50,  50, CV_8UC3,  cv::Scalar(0)},
           fDepthColor    {480, 640, CV_8UC3,  cv::Scalar(0)};
 
   int thresh = 200;
@@ -184,9 +182,9 @@ main(int argc, char **argv)
   std::vector<int> imToClassify;
   imToClassify.resize(50 * 50 * 3);
 
-  std::vector<cv::Mat> imgsDepth;
+  std::vector<cv::Mat> imSeq;
 
-  imgsDepth.resize(3000);
+  imSeq.resize(3000);
 
   uint16_t value = 0;
 
@@ -204,7 +202,7 @@ main(int argc, char **argv)
   int cont = 0;
   rscg::Rect<int> boundingBox;
 
-  bool printing = false;
+  bool recording = false;
 
   int contFiles = 0;
 
@@ -219,7 +217,14 @@ main(int argc, char **argv)
   int thickness = 3;
   int baseline;
 
-  while(! setToStop || printing)
+  std::future<bool> saveSeqFut;
+  int currSeqNum = 1;
+  int folderNum = 1;
+  int clsNum = 1;
+  uint32_t imsInSeq = 0;
+  std::string testOrTrain = "train";
+
+  while(! setToStop || recording)
   {
     device.fetchDepthFrame();
     device.fetchColorFrame();
@@ -259,9 +264,36 @@ main(int argc, char **argv)
     char reskey = (char)cv::waitKey(60);
     if(reskey == 'q')
       setToStop = true;
+    if(!recording && reskey == 't')
+      testOrTrain = (testOrTrain == "train" ? "test" : "train");
     if(reskey == ' ')
-      printing = true;
-    
+    {
+      recording = !recording;
+      if(!recording)
+      {
+        saveSeqFut = std::async(std::launch::async, 
+                                [&folderNum, &testOrTrain, 
+                                 &clsNum]
+                                (const std::vector<cv::Mat>& imgs,
+                                 uint32_t size, int seqNum) -> bool
+        {
+          std::string folderName = "Gestures/dynamic_poses/F" +
+                                    std::to_string(folderNum) + "/"
+                                    + testOrTrain +
+                                    "/P" + std::to_string(clsNum) +
+                                    "/e" + std::to_string(seqNum) + "/";
+          std::cout << "saving to folder" << folderName << '\n';
+          for(int i = 0; i < size; ++i)
+            cv::imwrite(folderName + "im" + std::to_string(i) + ".jpg",
+                        imgs[i]);
+          std::cout << "finished printing \n";
+          return true;
+        }, imSeq, cont, currSeqNum);
+
+        cont = 0;
+        ++currSeqNum;
+      }
+    }
 
     frame2WithRect = frame2.clone();
     boundingBox = rscg::boundingSquare(frame2WithRect);
@@ -283,23 +315,24 @@ main(int argc, char **argv)
         {
           float v = 0;
           v = frame2.at<uint8_t>(std::min((size_t)479, y1),
-                             std::min((size_t)639, x1));
+                                 std::min((size_t)639, x1));
 
           boundedFrame2.at<uint8_t>(y2, x2) = v;
         }
       }
-      cv::Mat aux;
-      cv::resize(boundedFrame2, aux, {50, 50}, 0, 0, CV_INTER_AREA);
+
+      cv::resize(boundedFrame2, im5050, {50, 50}, 0, 0, CV_INTER_AREA);
 
       for(size_t y = 0; y < 50; ++y)
       {
         for(size_t x = 0; x < 50; ++x)
-          imToClassify[x + y * 50] = aux.at<uint8_t>(y, x);
+          imToClassify[x + y * 50] = im5050.at<uint8_t>(y, x);
       }
     }
+
     auto cir = frame;
 
-    if(printing)
+    if(recording)
       cv::circle(cir, max_loc, 10, cv::Scalar(128));
     if(boundingBox.h != -1 && connected)
     {
@@ -316,9 +349,9 @@ main(int argc, char **argv)
     fDepthColor.copyTo(fullIm(cv::Rect(0, 0, frameColor.cols,
                                frameColor.rows)));
     
-    cv::cvtColor(frame2WithRect, frame2Color, cv::COLOR_GRAY2BGR);
-    frame2Color.copyTo(fullIm(cv::Rect(2*640, 0, frame2Color.cols, 
-                                       frame2Color.rows)));
+    cv::cvtColor(im5050, im5050Color, cv::COLOR_GRAY2BGR);
+    im5050Color.copyTo(fullIm(cv::Rect(2*640, 0, im5050Color.cols, 
+                                       im5050Color.rows)));
                                        
     graphIm.copyTo(fullIm(cv::Rect(0, 480, graphIm.cols,
                                    graphIm.rows)));
@@ -330,50 +363,15 @@ main(int argc, char **argv)
 
     cv::imshow("frame", fullIm);
     
-    if(printing && boundingBox.w > 0)
+    if(recording && boundingBox.w > 0)
     {
-      imgsDepth[cont] = frame2WithRect.clone();
+      imSeq[cont] = im5050.clone();
       cont++;
     }
-
-    printing = false;
   }
 
   if(connected)
     sock.disconnect();
-
-  int e = 1;
-  std::string folderName = "Gestures/dynamic_pose(oi)/";
-  for(int i = 0; i < cont; ++i)
-  {
-    boundingBox = rscg::boundingSquare(imgsDepth[i]);
-    cv::Mat boundedFrame = cv::Mat::ones(cv::Size{boundingBox.w,
-                                                  boundingBox.h}, CV_8UC1);
-    h = boundedFrame;
-    size_t y, y1, x, x1;
-    y = 0;
-    y1 = boundingBox.y;
-    for(; y < boundingBox.h; ++y, ++y1)
-    {
-      x = 0;
-      x1 = boundingBox.x;
-      for(; x < boundingBox.w; ++x, ++x1)
-      {
-        float v = 0;
-        v = frame2.at<uint8_t>(std::min((size_t)479, y1),
-                               std::min((size_t)639, x1));
-
-        boundedFrame.at<uint8_t>(y, x) = v;
-      }
-    }
-    cv::Mat aux;
-
-    aux.release();
-    cv::resize(boundedFrame, aux, {50, 50});
-
-    cv::imwrite(folderName + "depth/e" + std::to_string(e) + "/im_" +
-                std::to_string(i + contFiles) + ".jpg", boundedFrame);
-  }
 
   return 0;
 }

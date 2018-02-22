@@ -157,7 +157,7 @@ classifier.add(TimeDistributed(MaxPooling2D(pool_size=(2, 2))))
 classifier.add(TimeDistributed(Conv2D(8, (3, 3), input_shape=(25, 25, 1),
                                       activation='relu')))
 classifier.add(TimeDistributed(Flatten()))
-classifier.add(LSTM(2, activation='softmax', input_shape=(30, 25*25)))
+classifier.add(LSTM(30, activation='softmax', input_shape=(30, 25*25)))
 #classifier.add(Dense(units=30, activation='relu'))
 classifier.add(Dense(units=2, activation='softmax'))
 classifier.compile(optimizer='adam', loss='categorical_crossentropy',
