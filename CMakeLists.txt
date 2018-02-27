@@ -1,3 +1,4 @@
+
 cmake_minimum_required(VERSION 3.1)
 project(RealSenseCG)
 
@@ -45,6 +46,7 @@ set(SOURCE_FILES
   
 add_executable(${EXECUTABLE_NAME} ${SOURCE_FILES})
 
+find_package(SFML 2 COMPONENTS network system REQUIRED)
 find_package(SDL2 REQUIRED)
 find_package(OpenGL REQUIRED)
 find_package(GLBINDING REQUIRED)

@@ -13,6 +13,8 @@
 
 #include <SFML/Network.hpp>
 
+#include <boost/filesystem.hpp>
+
 #include <SDL.h>
 
 #ifdef _MSC_VER
@@ -224,6 +226,8 @@ main(int argc, char **argv)
   uint32_t imsInSeq = 0;
   std::string testOrTrain = "train";
 
+  std::vector<std::string> clsNames{"y", "oi"};
+
   while(! setToStop || recording)
   {
     device.fetchDepthFrame();
@@ -264,31 +268,59 @@ main(int argc, char **argv)
     char reskey = (char)cv::waitKey(60);
     if(reskey == 'q')
       setToStop = true;
-    if(!recording && reskey == 't')
+    else if(!recording && reskey == 't')
       testOrTrain = (testOrTrain == "train" ? "test" : "train");
-    if(reskey == ' ')
+    else if(reskey == 'f')
+      ++folderNum;
+    else if(reskey == 'g')
+      --folderNum;
+    else if(reskey == 'c')
+    {
+      currSeqNum = 0;
+      ++clsNum;
+    }
+    else if(reskey == 'v')
+    {
+      currSeqNum = 0;
+      --clsNum;
+    }
+    else if(reskey == ' ')
     {
       recording = !recording;
       if(!recording)
       {
         saveSeqFut = std::async(std::launch::async, 
-                                [&folderNum, &testOrTrain, 
-                                 &clsNum]
-                                (const std::vector<cv::Mat>& imgs,
-                                 uint32_t size, int seqNum) -> bool
+                                [](const std::vector<cv::Mat>& imgs,
+                                   uint32_t size, int seqNum, int folderNum,
+                                   std::string testOrTrain, int clsNum) -> bool
         {
+          namespace fs = boost::filesystem;
           std::string folderName = "Gestures/dynamic_poses/F" +
                                     std::to_string(folderNum) + "/"
                                     + testOrTrain +
                                     "/P" + std::to_string(clsNum) +
                                     "/e" + std::to_string(seqNum) + "/";
-          std::cout << "saving to folder" << folderName << '\n';
+
+          fs::path p(folderName);
+          if(fs::is_directory(folderName))
+          {
+            for(fs::directory_iterator end_dir_it, it(p);
+                it != end_dir_it; ++it)
+            {
+              fs::remove_all(it->path());
+            }
+
+          }
+          else
+            fs::create_directory(p);
+
           for(int i = 0; i < size; ++i)
             cv::imwrite(folderName + "im" + std::to_string(i) + ".jpg",
                         imgs[i]);
-          std::cout << "finished printing \n";
+
           return true;
-        }, imSeq, cont, currSeqNum);
+
+        }, imSeq, cont, currSeqNum, folderNum, testOrTrain, clsNum);
 
         cont = 0;
         ++currSeqNum;
@@ -360,6 +392,24 @@ main(int argc, char **argv)
                                         fontScale, thickness, &baseline);
     cv::putText(fullIm, std::to_string(cont), {0, 20}, fontFace, fontScale,
                 cv::Scalar(0, 128, 0), 1, 1);
+
+    textSize = cv::getTextSize(std::string("Folder Num:") +
+                               std::to_string(folderNum), fontFace, fontScale, 
+                               thickness, &baseline);
+    cv::putText(fullIm, std::string("Folder Num:") + std::to_string(folderNum), 
+                {0, 100}, fontFace, fontScale, cv::Scalar(0, 128, 0), 1, 1);
+
+    textSize = cv::getTextSize(std::string("cls name:")
+                               + std::to_string(clsNum), fontFace, fontScale,
+                               thickness, &baseline);
+    cv::putText(fullIm, std::string("cls name:") + std::to_string(clsNum),
+                {0, 200}, fontFace, fontScale, cv::Scalar(0, 128, 0), 1, 1);
+
+    textSize = cv::getTextSize(std::string("curr seq:")
+                               + std::to_string(currSeqNum), fontFace, fontScale,
+                               thickness, &baseline);
+    cv::putText(fullIm, std::string("curr seq:") + std::to_string(currSeqNum),
+                {0, 300}, fontFace, fontScale, cv::Scalar(0, 128, 0), 1, 1);
 
     cv::imshow("frame", fullIm);
     
