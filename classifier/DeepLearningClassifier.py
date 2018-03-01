@@ -85,23 +85,24 @@ class SequenceImageIterator(Iterator):
         self.num_classes = len(classes)
 
         self.samples = 0
-
+        self.maxSeqLength = -1
         # salvar sequencias por classes
         self.sequencesPerClass = []
         self.sequencesImgsPerClass = []
         for className in self.class_indices:
             # salvando a quantidade de sequencias por classe = total samples
-            seqDirNames = sorted(os.listdir(directory + '/' + className))
-            self.samples += len(seqDirNames)
-            self.sequencesPerClass.append(seqDirNames)
-            seqClassImgs = []
+            seqdirname = sorted(os.listdir(directory + '/' + className))
+            self.samples += len(seqdirname)
+            self.sequencesPerClass.append(seqdirname)
+            seqclassims = []
             # lendo images para cada sequencia
-            for seqName in seqDirNames:
-                self.classes
-                seqClassImgs.append(sorted(os.listdir(directory + '/' +
-                                                      className + '/' +
-                                                      seqName), key=len))
-            self.sequencesImgsPerClass.append(seqClassImgs)
+            for seqName in seqdirname:
+                curlen = len(os.listdir(directory + '/' +
+                                               className + '/' +
+                                               seqName))
+                if self.maxSeqLength < curlen:
+                    self.maxSeqLength = curlen
+            self.sequencesImgsPerClass.append(seqclassims)
 
         print("found %d sequences belonging to %d classes",
               self.samples, len(self.class_indices))
@@ -109,30 +110,36 @@ class SequenceImageIterator(Iterator):
         self.classes = np.zeros((self.samples,), dtype='int32')
         sumN = 0
         for k, v in self.class_indices.items():
-            seqDirNames = sorted(os.listdir(directory + '/' + k))
-            self.classes[sumN:sumN+len(seqDirNames)] = np.full(len(seqDirNames),v)
-            sumN += len(seqDirNames)
+            seqdirname = sorted(os.listdir(directory + '/' + k))
+            self.classes[sumN:sumN+len(seqdirname)] = np.full(len(seqdirname),v)
+            sumN += len(seqdirname)
 
 
         super(SequenceImageIterator, self).__init__(self.samples, batch_size,
                                                     shuffle, seed)
 
     def _get_batches_of_transformed_samples(self, index_array):
-        batch_x = np.zeros(30 * self.batch_size * 50 * 50, dtype=K.floatx())
-        batch_x = batch_x.reshape((self.batch_size, 30, 50, 50, 1))
-
-        print(len(self.class_indices))
+        batch_x = np.zeros(self.maxSeqLength * self.batch_size * 50 * 50, dtype=K.floatx())
+        batch_x = batch_x.reshape((self.batch_size, self.maxSeqLength, 50, 50, 1))
 
         grayscale = self.color_mode == "grayscale"
 
+        img = np.zeros(50 * 50).reshape((50, 50))
         for i1, j in enumerate(index_array):
             cls = int(j / self.batch_size)
-            curSeq = j % self.batch_size
-            for i2, it in enumerate(self.sequencesImgsPerClass[cls][curSeq]):
-                name = self.directory + "/P" + str(cls + 1) + "/" + self.sequencesPerClass[cls][curSeq] + "/" + it
-                img = load_img(name, grayscale=grayscale,
-                               target_size=self.target_size,
-                               interpolation=self.interpolation)
+            curseq = j % self.batch_size
+            last = -1
+            seqdir = self.directory + "/P" + str(cls + 1) + "/" + self.sequencesPerClass[cls][curseq] + "/"
+            seqimgs = sorted(os.listdir(seqdir), key=len)
+            curseqlen = len(seqimgs) - 1
+            for i2 in range(0, self.maxSeqLength):
+                i2norm = int(i2 / (self.maxSeqLength / (curseqlen + 1)))
+                name = seqdir + seqimgs[i2norm]
+                if last != i2norm:
+                    img = load_img(name, grayscale=grayscale,
+                                   target_size=self.target_size,
+                                   interpolation=self.interpolation)
+                last = i2norm
                 x = img_to_array(img, data_format=self.data_format)
                 x = self.image_data_generator.random_transform(x)
                 x = self.image_data_generator.standardize(x)
@@ -145,6 +152,16 @@ class SequenceImageIterator(Iterator):
         return batch_x, batch_y
 
 
+# Fitting the CNN to the images
+
+
+i_fold = 1
+dirname = '../Gestures/dynamic_poses/F1/train'
+
+seqIt = SequenceImageIterator(dirname, ImageDataGenerator(rescale=1./255),
+                              target_size=(50, 50), color_mode='grayscale',
+                              batch_size=32, class_mode='categorical')
+
 
 # Initialising the LSTM + CNN per Timestep
 
@@ -152,27 +169,18 @@ class SequenceImageIterator(Iterator):
 classifier = Sequential()
 classifier.add(TimeDistributed(Conv2D(8, (3, 3), input_shape=(50, 50, 1),
                                strides=(2, 2), activation='relu'),
-                               input_shape=(30, 50, 50, 1)))
+                               input_shape=(seqIt.maxSeqLength, 50, 50, 1)))
 classifier.add(TimeDistributed(MaxPooling2D(pool_size=(2, 2))))
 classifier.add(TimeDistributed(Conv2D(8, (3, 3), input_shape=(25, 25, 1),
                                       activation='relu')))
 classifier.add(TimeDistributed(Flatten()))
-classifier.add(LSTM(30, activation='softmax', input_shape=(30, 25*25)))
-#classifier.add(Dense(units=30, activation='relu'))
+classifier.add(LSTM(seqIt.maxSeqLength, activation='softmax',
+                    input_shape=(30, 25*25)))
 classifier.add(Dense(units=2, activation='softmax'))
 classifier.compile(optimizer='adam', loss='categorical_crossentropy',
                    metrics=['accuracy', metrics.categorical_accuracy])
 
 classifier.summary()
-
-# Part 2 - Fitting the CNN to the images
-
-iFold = 1
-dirname = '../Gestures/dynamic_poses/F1/train'
-
-seqIt = SequenceImageIterator(dirname, ImageDataGenerator(rescale=1./255),
-                              target_size=(50, 50), color_mode='grayscale',
-                              batch_size=32, class_mode='categorical')
 
 # Fit the classifier
 
