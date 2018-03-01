@@ -220,7 +220,7 @@ main(int argc, char **argv)
   int baseline;
 
   std::future<bool> saveSeqFut;
-  int currSeqNum = 1;
+  int currSeqNum = 44;
   int folderNum = 1;
   int clsNum = 1;
   uint32_t imsInSeq = 0;
@@ -345,9 +345,12 @@ main(int argc, char **argv)
         x1 = boundingBox.x;
         for(; x2 < boundingBox.w; ++x2, ++x1)
         {
-          float v = 0;
+          uint8_t v = 0;
+
           v = frame2.at<uint8_t>(std::min((size_t)479, y1),
                                  std::min((size_t)639, x1));
+          if(x1 > 639 || y1 > 479)
+            continue;
 
           boundedFrame2.at<uint8_t>(y2, x2) = v;
         }
