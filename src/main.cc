@@ -220,7 +220,7 @@ main(int argc, char **argv)
   int baseline;
 
   std::future<bool> saveSeqFut;
-  int currSeqNum = 44;
+  int currSeqNum = 33;
   int folderNum = 1;
   int clsNum = 1;
   uint32_t imsInSeq = 0;
@@ -276,7 +276,7 @@ main(int argc, char **argv)
       --folderNum;
     else if(reskey == 'c')
     {
-      currSeqNum = 0;
+      currSeqNum = 33;
       ++clsNum;
     }
     else if(reskey == 'v')
