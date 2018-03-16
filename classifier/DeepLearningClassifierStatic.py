@@ -34,8 +34,8 @@ classifier.summary()
 # Part 2 - Fitting the CNN to the images
 
 
-dist_dir = 'C:/Users/lucas/Documents/Projects/realsensecg/Gestures/static_poses_depth/F1/'
-depth_dir = 'C:/Users/lucas/Documents/Projects/realsensecg/Gestures/static_poses_dist/F1/'
+dist_dir = '../Gestures/static_poses_depth/F1/'
+depth_dir = '../Gestures/static_poses_dist/F1/'
 
 iFold = 1
 train_datagen = ImageDataGenerator(rescale=1./255)
@@ -43,14 +43,14 @@ train_datagen = ImageDataGenerator(rescale=1./255)
 test_datagen = ImageDataGenerator(rescale=1./255)
 
 training_set = train_datagen.flow_from_directory(
-  depth_dir +'train',
+  dist_dir +'train',
   target_size=(50, 50),
   color_mode='grayscale',
   batch_size=32,
   class_mode='categorical')
 
 test_set = test_datagen.flow_from_directory(
-  depth_dir + 'test',
+  dist_dir + 'test',
   target_size=(50, 50),
   color_mode='grayscale',
   batch_size=32,
@@ -72,9 +72,9 @@ import numpy as np
 w, h = 14, 14;
 mat = [[0 for x in range(w)] for y in range(h)] 
 k = 0
-for i in range(140):
+for i in range(1400):
     k = np.argmax(score[i])
-    mat[int(i/10)][k] += 1
+    mat[int(i/100)][k] += 1
 
 print(mat)
 
