@@ -109,6 +109,9 @@ class SequenceImageIterator(Iterator):
         super(SequenceImageIterator, self).__init__(self.samples, batch_size,
                                                     shuffle, seed)
 
+    def set_max_length(self, val):
+        self.maxSeqLength = val
+
     def _get_batches_of_transformed_samples(self, index_array):
         batch_x = np.zeros(self.maxSeqLength * self.batch_size *
                            self.target_size[0] * self.target_size[1],
@@ -124,11 +127,15 @@ class SequenceImageIterator(Iterator):
 
         for i1, j in enumerate(index_array):
             cls = 0
+            cls_sum_aux = 0
             for it_cls_num in range(0, len(self.sequencesPerClass)):
-                if j > len(self.sequencesPerClass[it_cls_num]):
+                if j > cls_sum_aux:
                     cls = it_cls_num
-            sclsaux = sum([len(self.sequencesPerClass[s1]) for s1 in range(0, cls)])
-            curseq = j - sclsaux
+                cls_sum_aux += len(self.sequencesPerClass[it_cls_num])
+
+            sclsaux = sum([len(self.sequencesPerClass[s1])
+                           for s1 in range(0, cls)])
+            curseq = j - sclsaux - 1
 
             seqdir = self.sequencesPerClass[cls][curseq]
 
@@ -163,23 +170,28 @@ seqIt = SequenceImageIterator(dirname, ImageDataGenerator(rescale=1./255),
                               target_size=(50, 50), color_mode='grayscale',
                               batch_size=32, class_mode='categorical')
 
-#estSeqIt = SequenceImageIterator(testDirName, ImageDataGenerator(rescale=1./255),
-#                                 target_size=(50, 50), color_mode='grayscale',
-#                                 batch_size=32, class_mode='categorical')
+testSeqIt = SequenceImageIterator(testDirName,
+                                  ImageDataGenerator(rescale=1./255),
+                                  target_size=(50, 50), color_mode='grayscale',
+                                  batch_size=32, class_mode='categorical')
 
 # Initialising the LSTM + CNN per Timestep
 
 
+max_sequence_length = max(seqIt.maxSeqLength, testSeqIt.maxSeqLength)
+testSeqIt.set_max_length(max_sequence_length)
+seqIt.set_max_length(max_sequence_length)
+
 classifier = Sequential()
 classifier.add(TimeDistributed(Conv2D(8, (3, 3), input_shape=(50, 50, 1),
                                strides=(2, 2), activation='relu'),
-                               input_shape=(seqIt.maxSeqLength, 50, 50, 1)))
+                               input_shape=(max_sequence_length, 50, 50, 1)))
 classifier.add(TimeDistributed(MaxPooling2D(pool_size=(2, 2))))
 classifier.add(TimeDistributed(Conv2D(8, (3, 3), input_shape=(25, 25, 1),
                                       activation='relu')))
 #classifier.add(TimeDistributed(MaxPooling2D(pool_size=(2, 2))))
 classifier.add(TimeDistributed(Flatten()))
-classifier.add(LSTM(seqIt.maxSeqLength, activation='relu',
+classifier.add(LSTM(max_sequence_length, activation='relu',
                     input_shape=(30, 25*25)))
 classifier.add(Dense(units=2, activation='softmax'))
 classifier.compile(optimizer='adam', loss='categorical_crossentropy',
@@ -192,9 +204,9 @@ classifier.summary()
 
 score = classifier.fit_generator(seqIt
                                  ,steps_per_epoch=40
-                                 ,epochs=25)
-                                 #validation_data=testSeqIt
-                                 #validation_steps=testSeqIt.samples/32)
+                                 ,epochs=25
+                                 ,validation_data=testSeqIt
+                                 ,validation_steps=testSeqIt.samples/32)
 
 # %%%%%%%  SERVIDOR  %%%%%%%%%%%%%%
 
