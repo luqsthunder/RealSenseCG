@@ -78,13 +78,13 @@ else()
 endif()
 
 if(WIN32 AND MSVC)
-	find_package(RSSDK REQUIRED)
-	
-	source_group("src" FILES ${SOURCE_FILES})
-	source_group("Shaders" FILES ${SHADERS})
-	
-	include_directories(${RSSDK_INCLUDE_DIRS})
-	target_link_libraries(${EXECUTABLE_NAME} ${RSSDK_LIBRARIES})
+    find_package(RSSDK REQUIRED)
+
+    source_group("src" FILES ${SOURCE_FILES})
+    source_group("Shaders" FILES ${SHADERS})
+
+    include_directories(${RSSDK_INCLUDE_DIRS})
+    target_link_libraries(${EXECUTABLE_NAME} ${RSSDK_LIBRARIES})
 endif()
 
 if(OpenCL_FOUND)
