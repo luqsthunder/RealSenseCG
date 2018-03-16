@@ -2,37 +2,31 @@
 # -*- coding: utf-8 -*-
 """
 tvieira@ic.ufal.br
+lucasthund3r@gmail.com
 """
 
-# Importing the Keras libraries and packages
 from keras.models import Sequential
 from keras.layers import Conv2D
 from keras.layers import Flatten
 from keras.layers import Dense
 from keras.layers import LSTM
 from keras.layers import MaxPooling2D
-from keras.layers import Activation
 from keras.preprocessing.image import ImageDataGenerator
 from keras.preprocessing.image import Iterator
 from keras.preprocessing.image import load_img
 from keras.preprocessing.image import img_to_array
-from keras.preprocessing.sequence import pad_sequences
 from keras.layers import TimeDistributed
 from keras import metrics
 from keras import backend as K
-
-import os
-import threading
-import warnings
-import multiprocessing.pool
-from functools import partial
 
 import socket
 import struct
 import numpy as np
 import scipy.misc
 
-import os, os.path
+import os
+import os.path
+
 
 class SequenceImageIterator(Iterator):
     def __init__(self, directory, image_data_generator,
@@ -80,7 +74,6 @@ class SequenceImageIterator(Iterator):
                     classes.append(subdir)
 
         # contar os diretorios de classes e armazenar nome dos diretorios
-        self.num_classes = len(classes)
         self.class_indices = dict(zip(classes, range(len(classes))))
         self.num_classes = len(classes)
 
@@ -88,58 +81,65 @@ class SequenceImageIterator(Iterator):
         self.maxSeqLength = -1
         # salvar sequencias por classes
         self.sequencesPerClass = []
-        self.sequencesImgsPerClass = []
-        for className in self.class_indices:
+        for class_name in self.class_indices:
             # salvando a quantidade de sequencias por classe = total samples
-            seqdirname = sorted(os.listdir(directory + '/' + className))
+
+            cur_cls_dir = os.path.join(directory, class_name)
+
+            seqdirname = sorted(os.listdir(cur_cls_dir))
             self.samples += len(seqdirname)
-            self.sequencesPerClass.append(seqdirname)
-            seqclassims = []
-            # lendo images para cada sequencia
+
+            self.sequencesPerClass.append([os.path.join(cur_cls_dir, l)
+                                           for l in os.listdir(cur_cls_dir)])
             for seqName in seqdirname:
-                curlen = len(os.listdir(directory + '/' +
-                                               className + '/' +
-                                               seqName))
+                curlen = len(os.listdir(os.path.join(cur_cls_dir, seqName)))
                 if self.maxSeqLength < curlen:
                     self.maxSeqLength = curlen
-            self.sequencesImgsPerClass.append(seqclassims)
 
-        print("found %d sequences belonging to %d classes",
+        print("found {%10d} sequences belonging to {%10d} classes",
               self.samples, len(self.class_indices))
 
         self.classes = np.zeros((self.samples,), dtype='int32')
-        sumN = 0
+        sum_n = 0
         for k, v in self.class_indices.items():
-            seqdirname = sorted(os.listdir(directory + '/' + k))
-            self.classes[sumN:sumN+len(seqdirname)] = np.full(len(seqdirname),v)
-            sumN += len(seqdirname)
-
+            seqdirname = sorted(os.listdir(os.path.join(directory, k)))
+            self.classes[sum_n:sum_n + len(seqdirname)] = np.full(len(seqdirname), v)
+            sum_n += len(seqdirname)
 
         super(SequenceImageIterator, self).__init__(self.samples, batch_size,
                                                     shuffle, seed)
 
     def _get_batches_of_transformed_samples(self, index_array):
-        batch_x = np.zeros(self.maxSeqLength * self.batch_size * 50 * 50, dtype=K.floatx())
-        batch_x = batch_x.reshape((self.batch_size, self.maxSeqLength, 50, 50, 1))
+        batch_x = np.zeros(self.maxSeqLength * self.batch_size *
+                           self.target_size[0] * self.target_size[1],
+                           dtype=K.floatx())
+
+        batch_x = batch_x.reshape((self.batch_size, self.maxSeqLength,
+                                   self.target_size[0], self.target_size[1], 1))
 
         grayscale = self.color_mode == "grayscale"
 
-        img = np.zeros(50 * 50).reshape((50, 50))
+        img = np.zeros(self.target_size[0] * self.target_size[1])\
+                .reshape((self.target_size[0], self.target_size[1]))
+
         for i1, j in enumerate(index_array):
-            cls = int(j / self.batch_size)
-            curseq = j % self.batch_size
-            last = -1
-            seqdir = self.directory + "/P" + str(cls + 1) + "/" + self.sequencesPerClass[cls][curseq] + "/"
+            cls = 0
+            for it_cls_num in range(0, len(self.sequencesPerClass)):
+                if j > len(self.sequencesPerClass[it_cls_num]):
+                    cls = it_cls_num
+            sclsaux = sum([len(self.sequencesPerClass[s1]) for s1 in range(0, cls)])
+            curseq = j - sclsaux
+
+            seqdir = self.sequencesPerClass[cls][curseq]
+
             seqimgs = sorted(os.listdir(seqdir), key=len)
-            curseqlen = len(seqimgs) - 1
-            for i2 in range(0, self.maxSeqLength):
-                i2norm = int(i2 / (self.maxSeqLength / (curseqlen + 1)))
-                name = seqdir + seqimgs[i2norm]
-                if last != i2norm:
-                    img = load_img(name, grayscale=grayscale,
-                                   target_size=self.target_size,
-                                   interpolation=self.interpolation)
-                last = i2norm
+            curseqlen = len(seqimgs)
+            for i2 in range(0, curseqlen):
+                name = os.path.join(seqdir, seqimgs[i2])
+                img = load_img(name, grayscale=grayscale,
+                               target_size=self.target_size,
+                               interpolation=self.interpolation)
+
                 x = img_to_array(img, data_format=self.data_format)
                 x = self.image_data_generator.random_transform(x)
                 x = self.image_data_generator.standardize(x)
@@ -156,12 +156,16 @@ class SequenceImageIterator(Iterator):
 
 
 i_fold = 1
-dirname = '../Gestures/dynamic_poses/F1/train'
+dirname     = '../Gestures/dynamic_poses/F1/train/'
+testDirName = '../Gestures/dynamic_poses/F1/test'
 
 seqIt = SequenceImageIterator(dirname, ImageDataGenerator(rescale=1./255),
                               target_size=(50, 50), color_mode='grayscale',
                               batch_size=32, class_mode='categorical')
 
+#estSeqIt = SequenceImageIterator(testDirName, ImageDataGenerator(rescale=1./255),
+#                                 target_size=(50, 50), color_mode='grayscale',
+#                                 batch_size=32, class_mode='categorical')
 
 # Initialising the LSTM + CNN per Timestep
 
@@ -173,6 +177,7 @@ classifier.add(TimeDistributed(Conv2D(8, (3, 3), input_shape=(50, 50, 1),
 classifier.add(TimeDistributed(MaxPooling2D(pool_size=(2, 2))))
 classifier.add(TimeDistributed(Conv2D(8, (3, 3), input_shape=(25, 25, 1),
                                       activation='relu')))
+#classifier.add(TimeDistributed(MaxPooling2D(pool_size=(2, 2))))
 classifier.add(TimeDistributed(Flatten()))
 classifier.add(LSTM(seqIt.maxSeqLength, activation='relu',
                     input_shape=(30, 25*25)))
@@ -185,11 +190,11 @@ classifier.summary()
 # Fit the classifier
 
 
-score = classifier.fit_generator(seqIt,
-                                 steps_per_epoch=40
+score = classifier.fit_generator(seqIt
+                                 ,steps_per_epoch=40
                                  ,epochs=25)
-                                 #,validation_data=test_set
-                                 #,validation_steps=test_set.samples/32)
+                                 #validation_data=testSeqIt
+                                 #validation_steps=testSeqIt.samples/32)
 
 # %%%%%%%  SERVIDOR  %%%%%%%%%%%%%%
 

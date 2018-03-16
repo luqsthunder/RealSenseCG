@@ -23,8 +23,11 @@ import scipy.misc
 classifier = Sequential()
 classifier.add(Conv2D(32, (3, 3), input_shape=(50, 50, 1), activation='relu'))
 classifier.add(MaxPooling2D(pool_size=(2, 2)))
+classifier.add(Conv2D(32, (3, 3), input_shape=(50, 50, 1), activation='relu'))
+classifier.add(MaxPooling2D(pool_size=(2, 2)))
 classifier.add(Flatten())
-classifier.add(Dense(units=100, activation='relu'))
+classifier.add(Dense(units=120, activation='relu'))
+classifier.add(Dense(units=84, activation='relu'))
 classifier.add(Dense(units=14, activation='softmax'))
 classifier.compile(optimizer='adam', loss='categorical_crossentropy',
                    metrics=['accuracy'])
@@ -43,14 +46,14 @@ train_datagen = ImageDataGenerator(rescale=1./255)
 test_datagen = ImageDataGenerator(rescale=1./255)
 
 training_set = train_datagen.flow_from_directory(
-  depth_dir +'train',
+  dist_dir +'train',
   target_size=(50, 50),
   color_mode='grayscale',
   batch_size=32,
   class_mode='categorical')
 
 test_set = test_datagen.flow_from_directory(
-  depth_dir + 'test',
+  dist_dir + 'test',
   target_size=(50, 50),
   color_mode='grayscale',
   batch_size=32,
@@ -61,7 +64,7 @@ test_set = test_datagen.flow_from_directory(
 
 classifier.fit_generator(training_set,
                          steps_per_epoch=40,
-                         epochs=25,
+                         epochs=1,
                          validation_data=test_set,
                          validation_steps=test_set.samples/32)
 score = classifier.predict_generator(test_set)
