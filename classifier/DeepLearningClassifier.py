@@ -34,9 +34,11 @@ class SequenceImageIterator(Iterator):
                  classes=None, class_mode='categorical',
                  batch_size=32, shuffle=True, seed=None,
                  data_format=None, save_to_dir=None,
-                 save_prefix='', save_format='png',
+                 save_prefix='', save_format='png', normalize_seq = True,
                  follow_links=False, interpolation='nearest'):
 
+
+        self.normalize_seq = normalize_seq
         if data_format is None:
             data_format = K.image_data_format()
         self.directory = directory
@@ -139,14 +141,17 @@ class SequenceImageIterator(Iterator):
 
             seqdir = self.sequencesPerClass[cls][curseq]
 
+            last = -1
             seqimgs = sorted(os.listdir(seqdir), key=len)
-            curseqlen = len(seqimgs)
+            curseqlen = len(seqimgs) if self.normalize_seq else self.maxSeqLength
             for i2 in range(0, curseqlen):
                 name = os.path.join(seqdir, seqimgs[i2])
-                img = load_img(name, grayscale=grayscale,
-                               target_size=self.target_size,
-                               interpolation=self.interpolation)
-
+                i2norm = int(i2 / (self.maxSeqLength / curseqlen )) if self.normalize_seq else i2
+                if i2norm != last:
+                    img = load_img(name, grayscale=grayscale,
+                                   target_size=self.target_size,
+                                   interpolation=self.interpolation)
+                last = i2norm
                 x = img_to_array(img, data_format=self.data_format)
                 x = self.image_data_generator.random_transform(x)
                 x = self.image_data_generator.standardize(x)
@@ -183,16 +188,16 @@ testSeqIt.set_max_length(max_sequence_length)
 seqIt.set_max_length(max_sequence_length)
 
 classifier = Sequential()
-classifier.add(TimeDistributed(Conv2D(8, (3, 3), input_shape=(50, 50, 1),
-                               strides=(2, 2), activation='relu'),
+classifier.add(TimeDistributed(Conv2D(32, (16, 16), input_shape=(50, 50, 1)
+                               ,activation='relu'),
                                input_shape=(max_sequence_length, 50, 50, 1)))
 classifier.add(TimeDistributed(MaxPooling2D(pool_size=(2, 2))))
-classifier.add(TimeDistributed(Conv2D(8, (3, 3), input_shape=(25, 25, 1),
-                                      activation='relu')))
+classifier.add(TimeDistributed(Conv2D(32, (16, 16), input_shape=(25, 25, 1)
+                                     ,activation='relu')))
 #classifier.add(TimeDistributed(MaxPooling2D(pool_size=(2, 2))))
 classifier.add(TimeDistributed(Flatten()))
 classifier.add(LSTM(max_sequence_length, activation='relu',
-                    input_shape=(30, 25*25)))
+                    input_shape=(120, 25*25)))
 classifier.add(Dense(units=2, activation='softmax'))
 classifier.compile(optimizer='adam', loss='categorical_crossentropy',
                    metrics=['accuracy', metrics.categorical_accuracy])
@@ -201,12 +206,12 @@ classifier.summary()
 
 # Fit the classifier
 
-
+seqIt.batch_size = 64
 score = classifier.fit_generator(seqIt
-                                 ,steps_per_epoch=40
+                                 ,steps_per_epoch=80
                                  ,epochs=25
                                  ,validation_data=testSeqIt
-                                 ,validation_steps=testSeqIt.samples/32)
+                                 ,validation_steps=testSeqIt.samples)
 
 # %%%%%%%  SERVIDOR  %%%%%%%%%%%%%%
 
