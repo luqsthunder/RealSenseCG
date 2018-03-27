@@ -115,7 +115,7 @@ class SequenceImageIterator(Iterator):
         self.maxSeqLength = val
 
     def _get_batches_of_transformed_samples(self, index_array):
-        batch_x = np.zeros(self.maxSeqLength * self.batch_size *
+        batch_x = np.zeros(self.maxSeqLength * self.batch_size *#
                            self.target_size[0] * self.target_size[1],
                            dtype=K.floatx())
 
@@ -194,10 +194,14 @@ classifier.add(TimeDistributed(Conv2D(32, (16, 16), input_shape=(50, 50, 1)
 classifier.add(TimeDistributed(MaxPooling2D(pool_size=(2, 2))))
 classifier.add(TimeDistributed(Conv2D(32, (16, 16), input_shape=(25, 25, 1)
                                      ,activation='relu')))
-#classifier.add(TimeDistributed(MaxPooling2D(pool_size=(2, 2))))
+classifier.add(TimeDistributed(MaxPooling2D(pool_size=(2, 2))))
 classifier.add(TimeDistributed(Flatten()))
-classifier.add(LSTM(max_sequence_length, activation='relu',
-                    input_shape=(120, 25*25)))
+classifier.add(LSTM(units=100, activation='relu', return_sequences=True,
+                    input_shape=(max_sequence_length, 25*25)))
+classifier.add(LSTM(units=60, activation='relu',
+                    input_shape=(max_sequence_length, 25*25)))
+#classifier.add(Dense(units=80, activation='relu'))
+#classifier.add(Dense(units=60, activation='relu'))
 classifier.add(Dense(units=2, activation='softmax'))
 classifier.compile(optimizer='adam', loss='categorical_crossentropy',
                    metrics=['accuracy', metrics.categorical_accuracy])
@@ -206,7 +210,7 @@ classifier.summary()
 
 # Fit the classifier
 
-seqIt.batch_size = 64
+#seqIt.batch_size = 64
 score = classifier.fit_generator(seqIt
                                  ,steps_per_epoch=80
                                  ,epochs=25
