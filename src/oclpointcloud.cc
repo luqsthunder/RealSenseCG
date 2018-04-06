@@ -125,8 +125,7 @@ oclGetPlatformID(cl_platform_id* clSelectedPlatformID,
       // if there's a platform or more, make space for ID's
       clPlatformIDs = new cl_platform_id[num_platforms * 
                                          sizeof(cl_platform_id)];
-      if(clPlatformIDs == NULL)
-      {
+      if(clPlatformIDs == NULL) {
         std::cerr << "Failed to allocate memory for cl_platform ID's!"
                   << std::endl;
 

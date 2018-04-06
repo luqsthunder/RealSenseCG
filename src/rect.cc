@@ -3,50 +3,45 @@
 using namespace rscg;
 
 rscg::Rect<int>
-rscg::boundingSquare(const cv::Mat &im)
-{
+rscg::boundingSquare(const cv::Mat &im) {
   rscg::Rect<int> bounds;
   int xl, yl;
-  std::pair<int, int> rangeX, rangeY, rangeXaux, rangeYaux;
+  std::pair<int, int> rngX, rngY, rangeXaux, rangeYaux;
 
-  rangeX = rangeXaux = {1000, -1};
+  rngX = rangeXaux = {1000, -1};
   int dist1, dist2;
-  for(int y = 0; y < 640; ++y)
-  {
-    for(int x = 0; x < 480; ++x)
-    {
-      if(im.at<uint8_t>(x, y) > 0)
-      {
-        if(rangeX.first > x)
-          rangeX.first = x;
-        if(rangeX.second < x)
-          rangeX.second = x;
+  for(int y = 0; y < 640; ++y) {
+    for(int x = 0; x < 480; ++x) {
+      if(im.at<uint8_t>(x, y) > 0) {
+        if(rngX.first > x)
+          rngX.first = x;
+        if(rngX.second < x)
+          rngX.second = x;
       }
     }
   }
 
-  rangeY = rangeYaux = {1000, -1};
-  for(int x = 0; x < 480; ++x)
-  {
-    for(int y = 0; y < 640; ++y)
-    {
-      if(im.at<uint8_t>(x, y) > 0)
-      {
-        if(rangeY.first > y)
-          rangeY.first = y;
-        if(rangeY.second < y)
-          rangeY.second = y;
+  rngY = rangeYaux = {1000, -1};
+  for(int x = 0; x < 480; ++x) {
+    for(int y = 0; y < 640; ++y) {
+      if(im.at<uint8_t>(x, y) > 0) {
+        if(rngY.first > y) {
+          rngY.first = y;
+        }
+        if(rngY.second < y) {
+          rngY.second = y;
+        }
       }
     }
   }
 
-  dist1 = rangeY.second - rangeY.first;
-  dist2 = rangeX.second - rangeX.first;
+  dist1 = rngY.second - rngY.first;
+  dist2 = rngX.second - rngX.first;
 
-  auto max = (dist1 > dist2) ? dist1 : dist2;
+  int max = (dist1 > dist2) ? dist1 : dist2;
 
-  bounds.y = (dist1 < dist2) ? rangeX.first : rangeX.first - ((max - dist2) / 2);
-  bounds.x = (dist1 < dist2) ? rangeY.first - ((max - dist1) / 2) : rangeY.first;
+  bounds.y = (dist1 < dist2) ? rngX.first : rngX.first - ((max - dist2) / 2);
+  bounds.x = (dist1 < dist2) ? rngY.first - ((max - dist1) / 2) : rngY.first;
   bounds.h = bounds.w = max;
   
   return bounds;

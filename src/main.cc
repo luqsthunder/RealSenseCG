@@ -147,6 +147,37 @@ fillTexture(SDL_Texture * texture, cv::Mat const &mat)
   SDL_UnlockTexture(texture);
 }
 
+inline void
+findAndCutBoundingBoxFromImage(cv::Mat& imOut) {
+  rscg::Rect<int> boundingBox = rscg::boundingSquare(imOut);
+
+  if(boundingBox.w > 0) {
+    cv::Mat boundedFrame2 = cv::Mat::zeros(cv::Size{boundingBox.w,
+                                           boundingBox.h}, CV_8UC1);
+    size_t y2, y1, x2, x1;
+    y2 = 0;
+    y1 = boundingBox.y;
+    for(; y2 < boundingBox.h; ++y2, ++y1) {
+      x2 = 0;
+      x1 = boundingBox.x;
+      for(; x2 < boundingBox.w; ++x2, ++x1) {
+        uint8_t v = 0;
+
+        v = imOut.at<uint8_t>(std::min((size_t)479, y1),
+                              std::min((size_t)639, x1));
+        if(x1 > 639 || y1 > 479) {
+          continue;
+        }
+
+        boundedFrame2.at<uint8_t>(y2, x2) = v;
+      }
+    }
+
+    cv::resize(boundedFrame2, imOut, cv::Size{boundingBox.w, boundingBox.w}, 0,
+               0, CV_INTER_AREA);
+  }
+}
+
 int
 main(int argc, char **argv)
 {
@@ -184,10 +215,6 @@ main(int argc, char **argv)
   std::vector<int> imToClassify;
   imToClassify.resize(50 * 50 * 3);
 
-  std::vector<cv::Mat> imSeq;
-
-  imSeq.resize(3000);
-
   uint16_t value = 0;
 
   sf::TcpSocket sock;
@@ -214,13 +241,16 @@ main(int argc, char **argv)
   sf::Clock clk;
   clk.restart();
 
+  std::vector<cv::Mat> seqIm;
+  seqIm.reserve(1000);
+
   int fontFace = cv::FONT_HERSHEY_SCRIPT_SIMPLEX;
   double fontScale = 1;
   int thickness = 3;
   int baseline;
 
   std::future<bool> saveSeqFut;
-  int currSeqNum = 56;
+  int currSeqNum = 0;
   int folderNum = 1;
   int clsNum = 1;
   uint32_t imsInSeq = 0;
@@ -228,8 +258,7 @@ main(int argc, char **argv)
 
   std::vector<std::string> clsNames{"y", "oi"};
 
-  while(! setToStop || recording)
-  {
+  while(! setToStop || recording) {
     device.fetchDepthFrame();
     device.fetchColorFrame();
 
@@ -238,19 +267,18 @@ main(int argc, char **argv)
     currMax = maxDepth;
     
     uint16_t currMinDepth = 9999;
-    for(const auto &it : imDepth)
-    {
-      if(it != 0 && it < currMinDepth)
+    for(const auto &it : imDepth) {
+      if(it != 0 && it < currMinDepth) {
         currMinDepth = it;
+      }
     }
 
-    for(size_t y = 0; y < 640; ++y)
-    {
-      for(size_t x = 0; x < 480; ++x)
-      {
+    for(size_t y = 0; y < 640; ++y) {
+      for(size_t x = 0; x < 480; ++x) {
         value = imDepth[x * 640 + y];
-        if(maxDepth < value)
+        if(maxDepth < value) {
           maxDepth = value;
+        }
 
         normValue = (uint8_t)((255.00) * ((double)value / (double)maxDepth));
 
@@ -266,102 +294,66 @@ main(int argc, char **argv)
     }
 
     char reskey = (char)cv::waitKey(60);
-    if(reskey == 'q')
+    if(reskey == 'q') {
       setToStop = true;
-    else if(!recording && reskey == 't')
+    }
+    else if(!recording && reskey == 't') {
       testOrTrain = (testOrTrain == "train" ? "test" : "train");
-    else if(reskey == 'f')
+    }
+    else if(reskey == 'f') {
       ++folderNum;
-    else if(reskey == 'g')
+    }
+    else if(reskey == 'g') {
       --folderNum;
-    else if(reskey == 'c')
-    {
-      currSeqNum = 33;
+    }
+    else if(reskey == 'c') {
+      currSeqNum = 0;
       ++clsNum;
     }
-    else if(reskey == 'v')
-    {
+    else if(reskey == 'v') {
       currSeqNum = 0;
       --clsNum;
     }
-    else if(reskey == ' ')
-    {
+    else if(reskey == ' ') {
       recording = !recording;
-      if(!recording)
-      {
+      if(!recording) {
         saveSeqFut = std::async(std::launch::async, 
                                 [](const std::vector<cv::Mat>& imgs,
-                                   uint32_t size, int seqNum, int folderNum,
-                                   std::string testOrTrain, int clsNum) -> bool
-        {
+                                   int seqNum, int folderNum,
+                                   std::string testOrTrain, int clsNum) 
+                                -> bool {
           namespace fs = boost::filesystem;
           std::string folderName = "Gestures/dynamic_poses/F" +
-                                    std::to_string(folderNum) + "/"
-                                    + testOrTrain +
+                                    std::to_string(folderNum) + "/" +
+                                    testOrTrain +
                                     "/P" + std::to_string(clsNum) +
                                     "/e" + std::to_string(seqNum) + "/";
 
           fs::path p(folderName);
-          if(fs::is_directory(folderName))
-          {
+          if(fs::is_directory(folderName)) {
             for(fs::directory_iterator end_dir_it, it(p);
-                it != end_dir_it; ++it)
-            {
+                it != end_dir_it; ++it) {
               fs::remove_all(it->path());
             }
 
           }
-          else
+          else {
             fs::create_directory(p);
+          }
 
-          for(int i = 0; i < size; ++i)
+          for(int i = 0; i < imgs.size(); ++i)
             cv::imwrite(folderName + "im" + std::to_string(i) + ".jpg",
                         imgs[i]);
 
           return true;
 
-        }, imSeq, cont, currSeqNum, folderNum, testOrTrain, clsNum);
+        }, seqIm, currSeqNum, folderNum, testOrTrain, clsNum);
 
         cont = 0;
         ++currSeqNum;
       }
-    }
-
-    frame2WithRect = frame2.clone();
-    boundingBox = rscg::boundingSquare(frame2WithRect);
-    cv::rectangle(frame2WithRect, {boundingBox.x, boundingBox.y, boundingBox.w,
-                                   boundingBox.h}, cv::Scalar(128));
-    if(boundingBox.w > 0)
-    {
-      cv::Mat boundedFrame2 = cv::Mat::zeros(cv::Size{boundingBox.w,
-                                                      boundingBox.h}, CV_8UC1);
-      h = boundedFrame2;
-      size_t y2, y1, x2, x1;
-      y2 = 0;
-      y1 = boundingBox.y;
-      for(; y2 < boundingBox.h; ++y2, ++y1)
-      {
-        x2 = 0;
-        x1 = boundingBox.x;
-        for(; x2 < boundingBox.w; ++x2, ++x1)
-        {
-          uint8_t v = 0;
-
-          v = frame2.at<uint8_t>(std::min((size_t)479, y1),
-                                 std::min((size_t)639, x1));
-          if(x1 > 639 || y1 > 479)
-            continue;
-
-          boundedFrame2.at<uint8_t>(y2, x2) = v;
-        }
-      }
-
-      cv::resize(boundedFrame2, im5050, {50, 50}, 0, 0, CV_INTER_AREA);
-
-      for(size_t y = 0; y < 50; ++y)
-      {
-        for(size_t x = 0; x < 50; ++x)
-          imToClassify[x + y * 50] = im5050.at<uint8_t>(y, x);
+      else {
+        seqIm.clear();
       }
     }
 
@@ -369,12 +361,13 @@ main(int argc, char **argv)
 
     if(recording)
       cv::circle(cir, max_loc, 10, cv::Scalar(128));
-    if(boundingBox.h != -1 && connected)
-    {
+    if(boundingBox.h != -1 && connected) {
       resClass = classifyImgNet(sock, imToClassify, {50, 50});
       graph.update(resClass);
       graphIm = graph.render();
     }
+
+    cv::resize(frame2, im5050, cv::Size{50, 50}, 0, 0, CV_INTER_AREA);
 
     cv::cvtColor(frame, frameColor, cv::COLOR_GRAY2BGR);
     frameColor.copyTo(fullIm(cv::Rect(640, 0, frameColor.cols, 
@@ -390,7 +383,7 @@ main(int argc, char **argv)
                                        
     graphIm.copyTo(fullIm(cv::Rect(0, 480, graphIm.cols,
                                    graphIm.rows)));
-                                   
+
     cv::Size textSize = cv::getTextSize(std::to_string(cont), fontFace,
                                         fontScale, thickness, &baseline);
     cv::putText(fullIm, std::to_string(cont), {0, 20}, fontFace, fontScale,
@@ -416,9 +409,9 @@ main(int argc, char **argv)
 
     cv::imshow("frame", fullIm);
     
-    if(recording && boundingBox.w > 0)
+    if(recording)
     {
-      imSeq[cont] = im5050.clone();
+      seqIm.push_back(frame2.clone());
       cont++;
     }
   }

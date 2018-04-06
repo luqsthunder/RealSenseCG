@@ -47,16 +47,16 @@ test_datagen = ImageDataGenerator(rescale=1./255)
 
 training_set = train_datagen.flow_from_directory(
   dist_dir +'train',
+  batch_size=64,
   target_size=(50, 50),
   color_mode='grayscale',
-  batch_size=32,
   class_mode='categorical')
 
 test_set = test_datagen.flow_from_directory(
   dist_dir + 'test',
+  batch_size=64,
   target_size=(50, 50),
   color_mode='grayscale',
-  batch_size=32,
   class_mode='categorical',
   shuffle=False)
 

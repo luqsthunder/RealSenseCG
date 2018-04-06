@@ -37,7 +37,6 @@ class SequenceImageIterator(Iterator):
                  save_prefix='', save_format='png', normalize_seq = True,
                  follow_links=False, interpolation='nearest'):
 
-
         self.normalize_seq = normalize_seq
         if data_format is None:
             data_format = K.image_data_format()
@@ -82,7 +81,7 @@ class SequenceImageIterator(Iterator):
         self.samples = 0
         self.maxSeqLength = -1
         # salvar sequencias por classes
-        self.sequencesPerClass = []
+        self.sequences_per_class = []
         for class_name in self.class_indices:
             # salvando a quantidade de sequencias por classe = total samples
 
@@ -91,15 +90,15 @@ class SequenceImageIterator(Iterator):
             seqdirname = sorted(os.listdir(cur_cls_dir))
             self.samples += len(seqdirname)
 
-            self.sequencesPerClass.append([os.path.join(cur_cls_dir, l)
-                                           for l in os.listdir(cur_cls_dir)])
+            self.sequences_per_class.append([os.path.join(cur_cls_dir, l)
+                                             for l in os.listdir(cur_cls_dir)])
             for seqName in seqdirname:
                 curlen = len(os.listdir(os.path.join(cur_cls_dir, seqName)))
                 if self.maxSeqLength < curlen:
                     self.maxSeqLength = curlen
 
-        print("found {%10d} sequences belonging to {%10d} classes",
-              self.samples, len(self.class_indices))
+        print("found {} sequences belonging to {} classes".format(
+              self.samples, len(self.class_indices)))
 
         self.classes = np.zeros((self.samples,), dtype='int32')
         sum_n = 0
@@ -115,11 +114,11 @@ class SequenceImageIterator(Iterator):
         self.maxSeqLength = val
 
     def _get_batches_of_transformed_samples(self, index_array):
-        batch_x = np.zeros(self.maxSeqLength * self.batch_size *#
+        batch_x = np.zeros(self.maxSeqLength * len(index_array) *
                            self.target_size[0] * self.target_size[1],
                            dtype=K.floatx())
 
-        batch_x = batch_x.reshape((self.batch_size, self.maxSeqLength,
+        batch_x = batch_x.reshape((len(index_array), self.maxSeqLength,
                                    self.target_size[0], self.target_size[1], 1))
 
         grayscale = self.color_mode == "grayscale"
@@ -130,16 +129,16 @@ class SequenceImageIterator(Iterator):
         for i1, j in enumerate(index_array):
             cls = 0
             cls_sum_aux = 0
-            for it_cls_num in range(0, len(self.sequencesPerClass)):
+            for it_cls_num in range(0, len(self.sequences_per_class)):
                 if j > cls_sum_aux:
                     cls = it_cls_num
-                cls_sum_aux += len(self.sequencesPerClass[it_cls_num])
+                cls_sum_aux += len(self.sequences_per_class[it_cls_num])
 
-            sclsaux = sum([len(self.sequencesPerClass[s1])
+            sclsaux = sum([len(self.sequences_per_class[s1])
                            for s1 in range(0, cls)])
             curseq = j - sclsaux - 1
 
-            seqdir = self.sequencesPerClass[cls][curseq]
+            seqdir = self.sequences_per_class[cls][curseq]
 
             last = -1
             seqimgs = sorted(os.listdir(seqdir), key=len)
@@ -157,10 +156,17 @@ class SequenceImageIterator(Iterator):
                 x = self.image_data_generator.standardize(x)
                 batch_x[i1][i2] = x
 
-        batch_y = np.zeros((self.batch_size, len(self.class_indices)),
+        batch_y = np.zeros((len(index_array), len(self.class_indices)),
                             dtype=K.floatx())
-        for it, label in enumerate(self.classes[index_array]):
-            batch_y[it, label] = 1
+        for it, label in enumerate(index_array):
+            cls = 0
+            cls_sum_aux = 0
+            for it_cls_num in range(0, len(self.sequences_per_class)):
+                if label > cls_sum_aux:
+                    cls = it_cls_num
+                cls_sum_aux += len(self.sequences_per_class[it_cls_num])
+
+            batch_y[it, cls] = 1
         return batch_x, batch_y
 
 
@@ -173,12 +179,12 @@ testDirName = '../Gestures/dynamic_poses/F1/test'
 
 seqIt = SequenceImageIterator(dirname, ImageDataGenerator(rescale=1./255),
                               target_size=(50, 50), color_mode='grayscale',
-                              batch_size=32, class_mode='categorical')
+                              batch_size=64, class_mode='categorical')
 
 testSeqIt = SequenceImageIterator(testDirName,
                                   ImageDataGenerator(rescale=1./255),
                                   target_size=(50, 50), color_mode='grayscale',
-                                  batch_size=32, class_mode='categorical')
+                                  batch_size=64, class_mode='categorical')
 
 # Initialising the LSTM + CNN per Timestep
 
@@ -188,20 +194,19 @@ testSeqIt.set_max_length(max_sequence_length)
 seqIt.set_max_length(max_sequence_length)
 
 classifier = Sequential()
-classifier.add(TimeDistributed(Conv2D(32, (16, 16), input_shape=(50, 50, 1)
+classifier.add(TimeDistributed(Conv2D(32, (10, 10), input_shape=(50, 50, 1)
                                ,activation='relu'),
                                input_shape=(max_sequence_length, 50, 50, 1)))
 classifier.add(TimeDistributed(MaxPooling2D(pool_size=(2, 2))))
-classifier.add(TimeDistributed(Conv2D(32, (16, 16), input_shape=(25, 25, 1)
+classifier.add(TimeDistributed(Conv2D(32, (5, 5), input_shape=(25, 25, 1)
                                      ,activation='relu')))
 classifier.add(TimeDistributed(MaxPooling2D(pool_size=(2, 2))))
 classifier.add(TimeDistributed(Flatten()))
-classifier.add(LSTM(units=100, activation='relu', return_sequences=True,
+classifier.add(LSTM(units=180, activation='tanh', return_sequences=True,
                     input_shape=(max_sequence_length, 25*25)))
-classifier.add(LSTM(units=60, activation='relu',
-                    input_shape=(max_sequence_length, 25*25)))
-#classifier.add(Dense(units=80, activation='relu'))
-#classifier.add(Dense(units=60, activation='relu'))
+classifier.add(LSTM(units=86, activation='tanh', return_sequences=True))
+classifier.add(LSTM(units=34, activation='tanh'))
+#classifier.add(LSTM(units=2, activation='softmax'))
 classifier.add(Dense(units=2, activation='softmax'))
 classifier.compile(optimizer='adam', loss='categorical_crossentropy',
                    metrics=['accuracy', metrics.categorical_accuracy])
@@ -209,13 +214,11 @@ classifier.compile(optimizer='adam', loss='categorical_crossentropy',
 classifier.summary()
 
 # Fit the classifier
-
-#seqIt.batch_size = 64
 score = classifier.fit_generator(seqIt
-                                 ,steps_per_epoch=80
-                                 ,epochs=25
-                                 ,validation_data=testSeqIt
-                                 ,validation_steps=testSeqIt.samples)
+                                 , steps_per_epoch=80
+                                 , epochs=10
+                                 , validation_data=testSeqIt
+                                 , validation_steps=testSeqIt.samples/32)
 
 # %%%%%%%  SERVIDOR  %%%%%%%%%%%%%%
 
@@ -228,7 +231,6 @@ s.listen(1)
 print('Waiting connection…')
 conn, addr = s.accept() #CONECTOU
 print('Connection address:', addr)
-
 
 while 1: # WHILE INFINITO PARA SEMPRE ESTAR RECEBENDO IMAGENS
     current_size = 0
