@@ -48,20 +48,16 @@ uint16_t maxDepth = 3000;
 
 template <typename T>
 T 
-clamp(const T& n, const T& lower, const T& upper) 
-{
+clamp(const T& n, const T& lower, const T& upper) {
   return std::max(lower, std::min(n, upper));
 }
 
 void
 toOCV(const std::vector<uint16_t> &in,
-      cv::Mat &out)
-{
+      cv::Mat &out) {
   cv::Mat out1{640, 480, CV_16UC1};
-  for(size_t y = 0; y < 480; ++y)
-  {
-    for(size_t x = 0; x < 640; ++x)
-    {
+  for(size_t y = 0; y < 480; ++y) {
+    for(size_t x = 0; x < 640; ++x) {
       out1.at<uint16_t>(x, y) = in[x + y * 640];
     }
   }
@@ -71,12 +67,9 @@ toOCV(const std::vector<uint16_t> &in,
 typedef cv::Point3_<uint8_t> Pixel;
 
 void
-toOCVColor(const std::vector<uint8_t> &in, cv::Mat &out)
-{
-  for(size_t y = 0; y < 640; ++y)
-  {
-    for(size_t x = 0; x < 480; ++x)
-    {
+toOCVColor(const std::vector<uint8_t> &in, cv::Mat &out) {
+  for(size_t y = 0; y < 640; ++y) {
+    for(size_t x = 0; x < 480; ++x) {
       out.at<Pixel>(x, y) = Pixel{in[3 * (x * 640 + y)], 
                                   in[3 * (x * 640 + y) + 1], 
                                   in[3 * (x * 640 + y) + 2]};
@@ -86,17 +79,14 @@ toOCVColor(const std::vector<uint8_t> &in, cv::Mat &out)
 
 std::vector<float>
 classifyImgNet(sf::TcpSocket &sock, const std::vector<int> &im,
-               cv::Size imSize)
-{
+               cv::Size imSize) {
   char okStr[5];
   size_t reciLen;
   char predictBuff[50000];
 
-  for(int y = 0; y < imSize.height; ++y)
-  {
+  for(int y = 0; y < imSize.height; ++y) {
     if(sock.send((void *)(&im[y * imSize.width]),
-       sizeof(int) * imSize.width, reciLen) != sf::Socket::Done)
-    {
+       sizeof(int) * imSize.width, reciLen) != sf::Socket::Done) {
       std::cout << "error " << std::endl;
       exit(4);
     }
@@ -111,8 +101,7 @@ classifyImgNet(sf::TcpSocket &sock, const std::vector<int> &im,
 
   std::string str{predictBuff};
 
-  for(size_t i = 0; i < 14; ++i)
-  {
+  for(size_t i = 0; i < 14; ++i) {
     float a = std::stof(str.substr(i * 9, 7));
     resultVec.push_back(a);
   }
@@ -121,8 +110,7 @@ classifyImgNet(sf::TcpSocket &sock, const std::vector<int> &im,
 } 
 
 
-class ImageClassifier
-{
+class ImageClassifier {
 public:
   ImageClassifier();
 
@@ -134,8 +122,7 @@ private:
 cv::Mat cutImage(const cv::Mat& im, const cv::Size &size);
 
 void 
-fillTexture(SDL_Texture * texture, cv::Mat const &mat)
-{
+fillTexture(SDL_Texture * texture, cv::Mat const &mat) {
   IplImage * img = &(IplImage)mat;
 
   unsigned char * texture_data = NULL;
@@ -176,6 +163,60 @@ findAndCutBoundingBoxFromImage(cv::Mat& imOut) {
     cv::resize(boundedFrame2, imOut, cv::Size{boundingBox.w, boundingBox.w}, 0,
                0, CV_INTER_AREA);
   }
+}
+
+
+bool opencvSaveVideoFromFrames(const std::vector<cv::Mat>& imgs,
+                               int seqNum, int folderNum,
+                               std::string testOrTrain, int clsNum) {
+  namespace fs = boost::filesystem;
+  std::string fileName = "Gestures/dynamic_poses/F" +
+                          std::to_string(folderNum) + "/" +
+                          testOrTrain + "/P" + std::to_string(clsNum) 
+                          + "/e" + std::to_string(seqNum) + ".avi";
+
+  fs::path p(fileName);
+  if(fs::exists(fileName) && !fs::is_directory(fileName)) {
+    fs::remove(p);
+  }
+
+  cv::VideoWriter vWriter;
+  vWriter.open(fileName, CV_FOURCC_DEFAULT, 60.0, {640, 480});
+  for(const auto &it : imgs) {
+    cv::Mat aux;
+    cv::cvtColor(it, aux, CV_GRAY2BGR);
+    vWriter.write(aux);
+  }
+  vWriter.release();
+}
+
+bool opencvSaveFramesToSequence(const std::vector<cv::Mat>& imgs,
+                                int seqNum, int folderNum,
+                                std::string testOrTrain, int clsNum) {
+    namespace fs = boost::filesystem;
+    std::string folderName = "Gestures/dynamic_poses/F" +
+      std::to_string(folderNum) + "/" +
+      testOrTrain +
+      "/P" + std::to_string(clsNum) +
+      "/e" + std::to_string(seqNum) + "/";
+
+    fs::path p(folderName);
+    if(fs::is_directory(folderName)) {
+      for(fs::directory_iterator end_dir_it, it(p);
+          it != end_dir_it; ++it) {
+        fs::remove_all(it->path());
+      }
+    }
+    else {
+      fs::create_directory(p);
+    }
+
+    for(int i = 0; i < imgs.size(); ++i) {
+      cv::imwrite(folderName + "im" + std::to_string(i) + ".jpg",
+                  imgs[i]);
+    }
+
+    return true;
 }
 
 int
@@ -220,8 +261,7 @@ main(int argc, char **argv)
   sf::TcpSocket sock;
   bool connected = true;
   sf::Socket::Status status = sock.connect("127.0.0.1", 31000);
-  if(status != sf::Socket::Done)
-  {
+  if(status != sf::Socket::Done) {
     std::cerr << "erro on connecting" << std::endl;
     connected = false;
   }
@@ -257,6 +297,8 @@ main(int argc, char **argv)
   std::string testOrTrain = "train";
 
   std::vector<std::string> clsNames{"y", "oi"};
+
+  bool isSavingVideos = false;
 
   while(! setToStop || recording) {
     device.fetchDepthFrame();
@@ -314,41 +356,28 @@ main(int argc, char **argv)
       currSeqNum = 0;
       --clsNum;
     }
+    else if(reskey == 'a') {
+      isSavingVideos = !isSavingVideos;
+    }
     else if(reskey == ' ') {
       recording = !recording;
       if(!recording) {
-        saveSeqFut = std::async(std::launch::async, 
-                                [](const std::vector<cv::Mat>& imgs,
-                                   int seqNum, int folderNum,
-                                   std::string testOrTrain, int clsNum) 
-                                -> bool {
-          namespace fs = boost::filesystem;
-          std::string folderName = "Gestures/dynamic_poses/F" +
-                                    std::to_string(folderNum) + "/" +
-                                    testOrTrain +
-                                    "/P" + std::to_string(clsNum) +
-                                    "/e" + std::to_string(seqNum) + "/";
-
-          fs::path p(folderName);
-          if(fs::is_directory(folderName)) {
-            for(fs::directory_iterator end_dir_it, it(p);
-                it != end_dir_it; ++it) {
-              fs::remove_all(it->path());
-            }
-
-          }
-          else {
-            fs::create_directory(p);
-          }
-
-          for(int i = 0; i < imgs.size(); ++i)
-            cv::imwrite(folderName + "im" + std::to_string(i) + ".jpg",
-                        imgs[i]);
-
-          return true;
-
-        }, seqIm, currSeqNum, folderNum, testOrTrain, clsNum);
-
+        if(!isSavingVideos) {
+          saveSeqFut = std::async(std::launch::async,
+                                  // function launch async
+                                  opencvSaveFramesToSequence,
+                                  // parameters to function
+                                  seqIm, currSeqNum, folderNum, testOrTrain,
+                                  clsNum);
+        }
+        else {
+          saveSeqFut = std::async(std::launch::async,
+                                  // function to launch async
+                                  opencvSaveVideoFromFrames,
+                                  // parameters to function
+                                  seqIm, currSeqNum, folderNum, testOrTrain,
+                                  clsNum);
+        }
         cont = 0;
         ++currSeqNum;
       }
