@@ -182,3 +182,47 @@ CameraDeviceWindows::intrinsics()
 {
   return _intri;
 }
+
+CameraDeviceKinect::CameraDeviceKinect()
+{
+}
+
+void
+CameraDeviceKinect::fetchColorFrame()
+{
+}
+
+void
+CameraDeviceKinect::fetchDepthFrame()
+{
+}
+
+const std::vector<uint16_t>&
+CameraDeviceKinect::getDepthFrame3Chanels()
+{
+  return imgdepth3;
+}
+
+const std::vector<uint8_t>&
+CameraDeviceKinect::getColorFrame()
+{
+  return _colorim;
+}
+
+const std::vector<uint16_t>&
+CameraDeviceKinect::getDepthFrame4Chanels()
+{
+  return imgdepth;
+}
+
+const std::vector<uint16_t>&
+CameraDeviceKinect::getDepthFrame1Chanels()
+{
+  return _imgdepth1c;
+}
+
+const rscg::Intrinsics&
+CameraDeviceKinect::intrinsics()
+{
+  return _intri;
+}

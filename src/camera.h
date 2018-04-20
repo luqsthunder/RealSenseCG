@@ -6,6 +6,8 @@
 
 #include <pxcsensemanager.h>
 
+#include <Kinect.h>
+
 #include "RSCGutils.h"
 
 namespace rscg
@@ -26,6 +28,27 @@ public:
 
 protected:
   std::array<unsigned, 2> msize;
+};
+
+
+class CameraDeviceKinect : public CameraDevice
+{
+  CameraDeviceKinect();
+
+  void fetchColorFrame() override;
+  void fetchDepthFrame() override;
+
+  const std::vector<uint16_t>& getDepthFrame4Chanels() override;
+  const std::vector<uint16_t>& getDepthFrame1Chanels() override;
+  const std::vector<uint16_t>& getDepthFrame3Chanels() override;
+  const std::vector<uint8_t>& getColorFrame() override;
+
+  const rscg::Intrinsics& intrinsics() override;
+private:
+  std::vector<uint16_t> imgdepth3;
+  std::vector<uint16_t> imgdepth;
+  std::vector<uint16_t> _imgdepth1c;
+  std::vector<uint8_t> _colorim;
 };
 
 class CameraDeviceWindows: public CameraDevice

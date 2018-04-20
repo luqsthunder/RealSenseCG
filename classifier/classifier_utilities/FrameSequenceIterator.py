@@ -15,7 +15,7 @@ class SequenceImageIterator(Iterator):
                  classes=None, class_mode='categorical',
                  batch_size=32, shuffle=True, seed=None,
                  data_format=None, save_to_dir=None,
-                 save_prefix='', save_format='png', normalize_seq = True,
+                 save_prefix='', save_format='png', normalize_seq=True,
                  follow_links=False, interpolation='nearest'):
 
         self.normalize_seq = normalize_seq
@@ -60,7 +60,7 @@ class SequenceImageIterator(Iterator):
         self.num_classes = len(classes)
 
         self.samples = 0
-        self.maxSeqLength = -1
+        self.max_seq_length = -1
         # salvar sequencias por classes
         self.sequences_per_class = []
         for class_name in self.class_indices:
@@ -75,8 +75,8 @@ class SequenceImageIterator(Iterator):
                                              for l in os.listdir(cur_cls_dir)])
             for seqName in seqdirname:
                 curlen = len(os.listdir(os.path.join(cur_cls_dir, seqName)))
-                if self.maxSeqLength < curlen:
-                    self.maxSeqLength = curlen
+                if self.max_seq_length < curlen:
+                    self.max_seq_length = curlen
 
         print("found {} sequences belonging to {} classes".format(
             self.samples, len(self.class_indices)))
@@ -92,14 +92,14 @@ class SequenceImageIterator(Iterator):
                                                     shuffle, seed)
 
     def set_max_length(self, val):
-        self.maxSeqLength = val
+        self.max_seq_length = val
 
     def _get_batches_of_transformed_samples(self, index_array):
-        batch_x = np.zeros(self.maxSeqLength * len(index_array) *
+        batch_x = np.zeros(self.max_seq_length * len(index_array) *
                            self.target_size[0] * self.target_size[1],
                            dtype=K.floatx())
 
-        batch_x = batch_x.reshape((len(index_array), self.maxSeqLength,
+        batch_x = batch_x.reshape((len(index_array), self.max_seq_length,
                                    self.target_size[0], self.target_size[1], 1))
 
         grayscale = self.color_mode == "grayscale"
@@ -123,10 +123,10 @@ class SequenceImageIterator(Iterator):
 
             last = -1
             seqimgs = sorted(os.listdir(seqdir), key=len)
-            curseqlen = len(seqimgs) if self.normalize_seq else self.maxSeqLength
+            curseqlen = self.max_seq_length if self.normalize_seq else len(seqimgs)
             for i2 in range(0, curseqlen):
-                name = os.path.join(seqdir, seqimgs[i2])
-                i2norm = int(i2 / (self.maxSeqLength / curseqlen )) if self.normalize_seq else i2
+                i2norm = int(i2 / (self.max_seq_length / len(seqimgs))) if self.normalize_seq else i2
+                name = os.path.join(seqdir, seqimgs[i2norm])
                 if i2norm != last:
                     img = load_img(name, grayscale=grayscale,
                                    target_size=self.target_size,

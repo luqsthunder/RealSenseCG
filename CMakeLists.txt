@@ -54,9 +54,15 @@ find_package(OpenCL REQUIRED)
 find_package(GLM REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(Eigen3 REQUIRED)
+find_package(KinectSDKv2)
 
 if(GLM_FOUND)
   include_directories(${GLM_INCLUDE_DIRS})
+endif()
+
+if(KinectSDK2_FOUND)
+  include_directories(${KinectSDK2_INCLUDE_DIRS})
+  target_link_libraries(${EXECUTABLE_NAME} ${KinectSDK2_LIBRARY_DIRS})
 endif()
 
 if(EIGEN3_FOUND)

@@ -195,10 +195,10 @@ bool opencvSaveFramesToSequence(const std::vector<cv::Mat>& imgs,
                                 std::string testOrTrain, int clsNum) {
     namespace fs = boost::filesystem;
     std::string folderName = "Gestures/dynamic_poses/F" +
-      std::to_string(folderNum) + "/" +
-      testOrTrain +
-      "/P" + std::to_string(clsNum) +
-      "/e" + std::to_string(seqNum) + "/";
+                              std::to_string(folderNum) + "/" +
+                              testOrTrain +
+                              "/P" + std::to_string(clsNum) +
+                              "/e" + std::to_string(seqNum) + "/";
 
     fs::path p(folderName);
     if(fs::is_directory(folderName)) {

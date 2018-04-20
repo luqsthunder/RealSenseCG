@@ -27,19 +27,19 @@ from classifier_utilities.FrameSequenceIterator import SequenceImageIterator
 
 
 # %% load videos
-capture = cv.VideoCapture('../Gestures/dynamic_poses/F1/train/P4/e0.avi')
-frames = []
-frame_count = int(capture.get(cv.CAP_PROP_FRAME_COUNT))
-for fIt in range(frame_count):
-    ret, img = capture.read()
-    frames.append(img)
-frames_np = np.array(frames)
+#capture = cv.VideoCapture('../Gestures/dynamic_poses/F1/train/P4/e0.avi')
+#frames = []
+#frame_count = int(capture.get(cv.CAP_PROP_FRAME_COUNT))
+#for fIt in range(frame_count):
+#    ret, img = capture.read()
+#    frames.append(img)
+#frames_np = np.array(frames)
 
-cv.imshow('image', frames_np[0])
-cv.waitKey(0)
-cv.destroyAllWindows()
+#cv.imshow('image', frames_np[0])
+#cv.waitKey(0)
+#cv.destroyAllWindows()
 
-print(frames_np.shape)
+#print(frames_np.shape)
 
 # %% load data and run classifier
 
@@ -49,16 +49,16 @@ testDirName = '../Gestures/dynamic_poses/F1/test'
 
 seqIt = SequenceImageIterator(dirname, ImageDataGenerator(rescale=1./255),
                               target_size=(50, 50), color_mode='grayscale',
-                              batch_size=64, class_mode='categorical')
+                              batch_size=64, class_mode='categorical', normalize_seq=False)
 
 testSeqIt = SequenceImageIterator(testDirName,
                                   ImageDataGenerator(rescale=1./255),
                                   target_size=(50, 50), color_mode='grayscale',
-                                  batch_size=64, class_mode='categorical')
+                                  batch_size=64, class_mode='categorical', normalize_seq=False)
 
 # Initialising the LSTM + CNN per Timestep
 
-max_sequence_length = max(seqIt.maxSeqLength, testSeqIt.maxSeqLength)
+max_sequence_length = max(seqIt.max_seq_length, testSeqIt.max_seq_length)
 testSeqIt.set_max_length(max_sequence_length)
 seqIt.set_max_length(max_sequence_length)
 
@@ -75,7 +75,7 @@ classifier.add(LSTM(units=180, activation='tanh', return_sequences=True,
                     input_shape=(max_sequence_length, 25*25)))
 classifier.add(LSTM(units=86, activation='tanh', return_sequences=True))
 classifier.add(LSTM(units=34, activation='tanh'))
-classifier.add(Dense(units=2, activation='softmax'))
+classifier.add(Dense(units=4, activation='softmax'))
 classifier.compile(optimizer='adam', loss='categorical_crossentropy',
                    metrics=['accuracy', metrics.categorical_accuracy])
 
