@@ -26,35 +26,22 @@ import scipy.misc
 from classifier_utilities.FrameSequenceIterator import SequenceImageIterator
 
 
-# %% load videos
-#capture = cv.VideoCapture('../Gestures/dynamic_poses/F1/train/P4/e0.avi')
-#frames = []
-#frame_count = int(capture.get(cv.CAP_PROP_FRAME_COUNT))
-#for fIt in range(frame_count):
-#    ret, img = capture.read()
-#    frames.append(img)
-#frames_np = np.array(frames)
-
-#cv.imshow('image', frames_np[0])
-#cv.waitKey(0)
-#cv.destroyAllWindows()
-
-#print(frames_np.shape)
-
 # %% load data and run classifier
 
 i_fold = 1
-dirname     = '../Gestures/dynamic_poses/F1/train/'
-testDirName = '../Gestures/dynamic_poses/F1/test'
+dirname     = '../Gestures/dynamic_poses/Folders/F1/train/'
+testDirName = '../Gestures/dynamic_poses/Folders/F1/test/'
 
 seqIt = SequenceImageIterator(dirname, ImageDataGenerator(rescale=1./255),
                               target_size=(50, 50), color_mode='grayscale',
-                              batch_size=64, class_mode='categorical', normalize_seq=False)
+                              batch_size=64, class_mode='categorical',
+                              normalize_seq=False)
 
 testSeqIt = SequenceImageIterator(testDirName,
                                   ImageDataGenerator(rescale=1./255),
                                   target_size=(50, 50), color_mode='grayscale',
-                                  batch_size=64, class_mode='categorical', normalize_seq=False)
+                                  batch_size=64, class_mode='categorical',
+                                  normalize_seq=False)
 
 # Initialising the LSTM + CNN per Timestep
 

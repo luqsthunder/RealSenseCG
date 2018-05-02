@@ -7,6 +7,7 @@
 #include <thread>
 #include <future>
 #include <cstdio>
+#include <climits>
 
 #include <opencv2/opencv.hpp>
 #include <opencv2/dnn.hpp>
@@ -188,6 +189,8 @@ bool opencvSaveVideoFromFrames(const std::vector<cv::Mat>& imgs,
     vWriter.write(aux);
   }
   vWriter.release();
+
+  return true;
 }
 
 bool opencvSaveFramesToSequence(const std::vector<cv::Mat>& imgs,
@@ -223,7 +226,7 @@ int
 main(int argc, char **argv)
 {
   uint16_t currMax = maxDepth, normValue = 0;
-  auto device = rscg::CameraDeviceWindows();
+  auto device = rscg::CameraDeviceRSWindows();
   rscg::GraphProbs graph{200};
 
   bool setToStop = false;
@@ -240,7 +243,7 @@ main(int argc, char **argv)
           fDepth         {480, 640, CV_8UC1,  cv::Scalar(0)},
           im5050         { 50,  50, CV_8UC1,  cv::Scalar(0)},
           im5050Color    { 50,  50, CV_8UC3,  cv::Scalar(0)},
-          fDepthColor    {480, 640, CV_8UC3,  cv::Scalar(0)};
+          fDepthColor    {512, 424, CV_8UC1,  cv::Scalar(0)};
 
   int thresh = 200;
 
@@ -300,14 +303,11 @@ main(int argc, char **argv)
 
   bool isSavingVideos = false;
 
-  while(! setToStop || recording) {
+  while(!setToStop || recording) {
     device.fetchDepthFrame();
-    device.fetchColorFrame();
-
-    imDepth = device.getDepthFrame1Chanels();
 
     currMax = maxDepth;
-    
+
     uint16_t currMinDepth = 9999;
     for(const auto &it : imDepth) {
       if(it != 0 && it < currMinDepth) {
@@ -317,15 +317,15 @@ main(int argc, char **argv)
 
     for(size_t y = 0; y < 640; ++y) {
       for(size_t x = 0; x < 480; ++x) {
-        value = imDepth[x * 640 + y];
+        value = device.getDepthFrame1Chanels()[x * 640 + y];
         if(maxDepth < value) {
           maxDepth = value;
         }
 
         normValue = (uint8_t)((255.00) * ((double)value / (double)maxDepth));
 
-        frame.at<uint8_t>(x, y) = 
-          (uint8_t)(( (value < (uint16_t)thresh + currMinDepth) 
+        frame.at<uint8_t>(x, y) =
+          (uint8_t)(( (value < (uint16_t)thresh + currMinDepth)
                     && (value > 10)) ? 255 : 0);
 
         frame2.at<uint8_t>(x, y) = (((value < (uint16_t)thresh + currMinDepth)
@@ -334,11 +334,12 @@ main(int argc, char **argv)
 
       }
     }
-
+    
     char reskey = (char)cv::waitKey(60);
     if(reskey == 'q') {
       setToStop = true;
     }
+
     else if(!recording && reskey == 't') {
       testOrTrain = (testOrTrain == "train" ? "test" : "train");
     }

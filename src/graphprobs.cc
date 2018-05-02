@@ -58,8 +58,7 @@ GraphProbs::render()
                                         fontScale, thickness, &baseline);
     auto v = (int)(_graphPoints[i][_currInitial] * 200 + 20);
     baseline += 1;
-    cv::Point textOrg(11*i, 
-                      479 - v);
+    cv::Point textOrg(11 * i, 479 - v);
 
     cv::putText(out, text, textOrg, fontFace, fontScale,
                 _colorMap[i], 1, 1);

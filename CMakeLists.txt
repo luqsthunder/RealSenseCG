@@ -62,7 +62,7 @@ endif()
 
 if(KinectSDK2_FOUND)
   include_directories(${KinectSDK2_INCLUDE_DIRS})
-  target_link_libraries(${EXECUTABLE_NAME} ${KinectSDK2_LIBRARY_DIRS})
+  target_link_libraries(${EXECUTABLE_NAME} ${KinectSDK2_LIBRARIES})
 endif()
 
 if(EIGEN3_FOUND)
