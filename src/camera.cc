@@ -29,8 +29,6 @@ CameraDeviceRSWindows::CameraDeviceRSWindows() : sm(nullptr) {
   auto focus = device->QueryDepthFocalLength();
   auto pp = device->QueryDepthPrincipalPoint();
 
-  PXCRangeF32 rangeZ = device->QueryDSMinMaxZ();
-
   _intri = Intrinsics{pp.x, pp.y, focus.x, focus.y};
   imgdepth3.resize(640 * 480 * 3);
 }

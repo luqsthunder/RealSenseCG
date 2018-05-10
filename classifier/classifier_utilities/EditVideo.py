@@ -37,7 +37,7 @@ fps = 0
 range_video = curr_last - curr_first
 window_frame = np.array((10, 10))
 
-for idx, uncut_vid_path in enumerate(os.listdir(folder_src)):
+for idx, uncut_vid_path in enumerate(sorted(os.listdir(folder_src), key=len)):
     cut_pieces.append([])
     uncut_video_folder = sorted(os.listdir(os.path.join(folder_src,
                                                         uncut_vid_path)),
@@ -103,10 +103,16 @@ for idx, uncut_vid_path in enumerate(os.listdir(folder_src)):
                        'amount of images: {}'.format(size_total), (0, 75),
                        font, font_scale, (0, 255, 0), line_type)
 
+            cv.putText(window_frame,
+                       'amount cut: {}'.format(len(cut_pieces[idx])), (0, 100),
+                       font, font_scale, (0, 255, 0), line_type)
+
             loading = False
 
         cv.imshow('video', window_frame)
 
+        cv.putText(curr_video_show[fps], 'fps: {}'.format(fps), (0, 25), font,
+                   font_scale, (0, 255, 0), line_type)
         cv.imshow('currentCut', curr_video_show[fps])
         fps = (fps + 1) % range_video
 
@@ -140,31 +146,83 @@ for idx, uncut_vid_path in enumerate(os.listdir(folder_src)):
                 break
 
             curr_last = max(curr_first, min(curr_first + 10,
-                                            len(uncut_video_folder)))
+                                            size_total - 1))
             loading = True
             cut = False
 
 cv.destroyAllWindows()
 
+
+folder_src_nd = '../../Gestures/dynamic_poses/uncut/norm_depth'
+folder_src_cd = '../../Gestures/dynamic_poses/uncut/complete_depth'
+folder_src_md = '../../Gestures/dynamic_poses/uncut/mod'
+folder_src_10 = '../../Gestures/dynamic_poses/uncut/100x100'
+
+folder_dest_nd = '../../Gestures/dynamic_poses/DB/norm_depth'
+folder_dest_cd = '../../Gestures/dynamic_poses/DB/complete_depth'
+folder_dest_md = '../../Gestures/dynamic_poses/DB/mod'
+folder_dest_10 = '../../Gestures/dynamic_poses/DB/100x100'
+
+
 last_last = 0
 for idx, gestures_cut in enumerate(cut_pieces):
-    curr_folder_src = os.path.join(folder_src, 'P' + str(idx + 1))
-    folder_cont_samples = os.listdir(curr_folder_src)
+    curr_folder_src_nd = os.path.join(folder_src_nd, 'P' + str(idx + 1))
+    curr_folder_src_cd = os.path.join(folder_src_cd, 'P' + str(idx + 1))
+    curr_folder_src_md = os.path.join(folder_src_md, 'P' + str(idx + 1))
+    curr_folder_src_10 = os.path.join(folder_src_10, 'P' + str(idx + 1))
+    folder_cont_samples = os.listdir(curr_folder_src_nd)
     for seq_num, video in enumerate(gestures_cut):
         first, last = video
-        videos_count = len(os.listdir(os.path.join(folder_dest,
+        videos_count = len(os.listdir(os.path.join(folder_dest_nd,
                                                    'P' + str(idx + 1))))
-        curr_folder_dst = os.path.join(folder_dest, 'P' + str(idx + 1), 'e' +
-                                       str(videos_count))
-        if not os.path.exists(curr_folder_dst):
-            os.makedirs(curr_folder_dst)
+        curr_folder_dst_nd = os.path.join(folder_dest_nd,
+                                          'P' + str(idx + 1), 'e' +
+                                          str(videos_count))
+
+        curr_folder_dst_cd = os.path.join(folder_dest_cd,
+                                          'P' + str(idx + 1), 'e' +
+                                          str(videos_count))
+
+        curr_folder_dst_md = os.path.join(folder_dest_md,
+                                          'P' + str(idx + 1), 'e' +
+                                          str(videos_count))
+
+        curr_folder_dst_10 = os.path.join(folder_dest_10,
+                                          'P' + str(idx + 1), 'e' +
+                                          str(videos_count))
+
+        if not os.path.exists(curr_folder_dst_nd):
+            os.makedirs(curr_folder_dst_nd)
+
+        if not os.path.exists(curr_folder_dst_cd):
+            os.makedirs(curr_folder_dst_cd)
+
+        if not os.path.exists(curr_folder_dst_md):
+            os.makedirs(curr_folder_dst_md)
+
+        if not os.path.exists(curr_folder_dst_10):
+            os.makedirs(curr_folder_dst_10)
 
         cont_img_fps = 0
         for video_frames_idx in range(first, last + 1):
-            img_src_name = 'imNDp' + str(video_frames_idx) + '.png'
-            img_dst_name = 'imNDp' + str(cont_img_fps) + '.png'
-            copyfile(os.path.join(curr_folder_src, img_src_name),
-                     os.path.join(curr_folder_dst, img_dst_name))
+            img_src_name = 'im' + str(video_frames_idx) + '.png'
+            img_dst_name = 'im' + str(cont_img_fps) + '.png'
+
+            img_src_name_cd = 'im' + str(video_frames_idx) + '.xml'
+            img_dst_name_cd = 'im' + str(cont_img_fps) + '.xml'
+
+            copyfile(os.path.join(curr_folder_src_nd, img_src_name),
+                     os.path.join(curr_folder_dst_nd, img_dst_name))
+
+            copyfile(os.path.join(curr_folder_src_cd, img_src_name_cd),
+                     os.path.join(curr_folder_dst_cd, img_dst_name_cd))
+
+            copyfile(os.path.join(curr_folder_src_md, img_src_name),
+                     os.path.join(curr_folder_dst_md, img_dst_name))
+
+            copyfile(os.path.join(curr_folder_src_10, img_src_name),
+                     os.path.join(curr_folder_dst_10, img_dst_name))
+
             cont_img_fps += 1
 
 #        curr_folder_dst_t = os.path.join(folder_trash_dest, 'P' + str(idx + 1),

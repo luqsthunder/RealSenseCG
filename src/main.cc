@@ -42,6 +42,27 @@
 #include "rect.h"
 #include "graphprobs.h"
 
+void
+writePPMu16(const std::string &name, const cv::Mat &im) {
+  std::ofstream file;
+  file.open(name, std::ios::app);
+  const uint16_t maxDepth = 1840;
+  file << "P3" << '\n';
+  file << uint16_t(640) << " " << uint16_t(480) << '\n';
+  file << maxDepth << '\n';
+  
+  uint16_t value = 0;
+
+  for(uint32_t y = 0; y < 480; ++y) {
+    for(uint32_t x = 0; x < 640; ++x) {
+      value = im.at<uint16_t>(y, x);
+      file <<  value << ' '<< value << ' ' << value << "  ";
+    }
+    if (y < 480) file << '\n';
+  }
+  file.close();
+}
+
 std::vector<float>
 classifyImgNet(sf::TcpSocket &sock, const std::vector<int> &im,
                cv::Size imSize) {
@@ -145,7 +166,8 @@ amountImgUncutClsFolder(int clsNum, const std::string &name) {
 
 bool 
 saveSingleImage(const cv::Mat &imCDepth, const cv::Mat &im100, 
-                const cv::Mat &imNormTotal, int imNum, int clsNum) {
+                const cv::Mat &imNormTotal, const cv::Mat &imModDepth,
+                int imNum, int clsNum) {
   namespace fs = boost::filesystem;
 
   std::string folder = "Gestures/dynamic_poses/uncut/complete_depth/P" +
@@ -154,7 +176,12 @@ saveSingleImage(const cv::Mat &imCDepth, const cv::Mat &im100,
     fs::path p(folder);
     fs::create_directory(p);
   }
-  cv::imwrite(folder + "imCDp" + std::to_string(imNum) + ".ppm", imCDepth);
+
+
+  cv::FileStorage f(folder + "im" + std::to_string(imNum) + ".xml", 
+                    cv::FileStorage::WRITE);
+  f << "im" << imCDepth;
+  f.release();
 
 
   folder = "Gestures/dynamic_poses/uncut/100x100/P" +
@@ -163,7 +190,7 @@ saveSingleImage(const cv::Mat &imCDepth, const cv::Mat &im100,
     fs::path p(folder);
     fs::create_directory(p);
   }
-  cv::imwrite(folder + "im100" + std::to_string(imNum) + ".png", im100);
+  cv::imwrite(folder + "im" + std::to_string(imNum) + ".png", im100);
 
 
   folder = "Gestures/dynamic_poses/uncut/norm_depth/P" +
@@ -172,7 +199,16 @@ saveSingleImage(const cv::Mat &imCDepth, const cv::Mat &im100,
     fs::path p(folder);
     fs::create_directory(p);
   }
-  cv::imwrite(folder + "imNDp" + std::to_string(imNum) + ".png", imNormTotal);
+  cv::imwrite(folder + "im" + std::to_string(imNum) + ".png", imNormTotal);
+
+
+  folder = "Gestures/dynamic_poses/uncut/mod/P" +
+    std::to_string(clsNum) + "/";
+  if(!fs::is_directory(folder)) {
+    fs::path p(folder);
+    fs::create_directory(p);
+  }
+  cv::imwrite(folder + "im" + std::to_string(imNum) + ".png", imModDepth);
 
   return true;
 }
@@ -189,8 +225,11 @@ main(int argc, char **argv)
   cv::Mat frame                   {480, 640, CV_8UC1  ,  cv::Scalar(0)},
           frameColor              {480, 640, CV_8UC3  ,  cv::Scalar(0)},
           frame16C                {480, 640, CV_16UC1 ,  cv::Scalar(0)},
+          frame16CColor           {480, 640, CV_16UC3 ,  cv::Scalar(0)},
           frameNormDepthRng       {480, 640, CV_8UC1  ,  cv::Scalar(0)},
           frameNormDepthRngColor  {480, 640, CV_8UC3  ,  cv::Scalar(0)},
+          frameModDepthRng        {480, 640, CV_8UC1  ,  cv::Scalar(0)},
+          frameModDepthRngColor   {480, 640, CV_8UC3  ,  cv::Scalar(0)},
           graphIm                 {480, 640, CV_8UC3  ,  cv::Scalar(0)},
           im100x100               {100, 100, CV_8UC1  ,  cv::Scalar(0)},
           im100x100Color          {100, 100, CV_8UC3  ,  cv::Scalar(0)};
@@ -204,7 +243,8 @@ main(int argc, char **argv)
   imToClassify.resize(50 * 50 * 3);
 
   uint16_t value = 0, depthCloserCam = 9999;
-  const uint16_t maxDepth = 32727;
+  uint16_t maxValueCap = 0;
+  const uint16_t maxDepth = 1840;//32727;
   uint8_t normValue = 0;
 
   sf::TcpSocket sock;
@@ -217,8 +257,6 @@ main(int argc, char **argv)
 
   std::vector<float> resClass;
 
-  size_t cont = 0;
-
   bool recording = false;
 
   cv::Mat fullIm{480 * 2, 640 * 3, CV_8UC3, cv::Scalar(0)};
@@ -229,6 +267,7 @@ main(int argc, char **argv)
   int baseline;
 
   int clsNum = 1;
+  size_t cont = amountImgUncutClsFolder(clsNum, "norm_depth");
 
   bool isSavingVideos = false;
 
@@ -247,20 +286,27 @@ main(int argc, char **argv)
       for(size_t x = 0; x < 480; ++x) {
         value = device.getDepthFrame1Chanels()[x * 640 + y];
 
+        if(value > maxValueCap)
+          maxValueCap = value;
+
         frame.at<uint8_t>(x, y) = value % 255;
         frame16C.at<uint16_t>(x, y) = 
           ((value < (uint16_t)thresh + depthCloserCam) && (value > 10) ?
-            value % 255 : 0);
+            value : 0);
 
-        // normalizing using linear interpolation
-        // normValue = (uint8_t)((255.00) * ((double)value / (double)maxDepth));
+         // normalizing using linear interpolation
+         normValue = (uint8_t)((255.00) * ((double)value / (double)maxDepth));
 
         frameNormDepthRng.at<uint8_t>(x, y) =
           ( (value < (uint16_t)thresh + depthCloserCam) ? 
-              value % 255: 0);
+           normValue: 0);
+
+        frameModDepthRng.at<uint8_t>(x, y) =
+          ((value < (uint16_t)thresh + depthCloserCam) ?
+           value % 255 : 0);
       }
     }
-    
+  
     char reskey = (char)cv::waitKey(60);
     if(reskey == 'q') {
       setToStop = true;
@@ -289,9 +335,9 @@ main(int argc, char **argv)
                                          frameNormDepthRngColor.cols,
                                          frameColor.rows)));
 
-    cv::cvtColor(im100x100, im100x100Color, cv::COLOR_GRAY2BGR);
-    im100x100Color.copyTo(fullIm(cv::Rect(2*640, 0, im100x100Color.cols, 
-                                       im100x100Color.rows)));
+    cv::cvtColor(frameModDepthRng, frameModDepthRngColor, cv::COLOR_GRAY2BGR);
+    frameModDepthRngColor.copyTo(fullIm(cv::Rect(2*640, 0, frameModDepthRngColor.cols, 
+                                       frameModDepthRngColor.rows)));
                                        
     graphIm.copyTo(fullIm(cv::Rect(0, 480, graphIm.cols,
                                    graphIm.rows)));
@@ -316,8 +362,10 @@ main(int argc, char **argv)
     cv::imshow("frame", fullIm);
     
     if(recording) {
+      cv::cvtColor(frame16C, frame16CColor, cv::COLOR_GRAY2BGR);
       std::async(std::launch::async, saveSingleImage, 
-                 frame16C, im100x100, frameNormDepthRng, cont, clsNum);
+                 frame16C, im100x100, frameNormDepthRng, frameModDepthRng,
+                 cont, clsNum);
       cont++;
     }
   }
