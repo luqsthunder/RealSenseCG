@@ -202,7 +202,7 @@ saveSingleImage(const cv::Mat &imCDepth, const cv::Mat &im100,
   cv::imwrite(folder + "im" + std::to_string(imNum) + ".png", imNormTotal);
 
 
-  folder = "Gestures/dynamic_poses/uncut/mod/P" +
+  folder = "Gestures/dynamic_poses/uncut/mod/P" +https://drive.google.com/drive/u/0/my-drive
     std::to_string(clsNum) + "/";
   if(!fs::is_directory(folder)) {
     fs::path p(folder);
@@ -217,6 +217,9 @@ saveSingleImage(const cv::Mat &imCDepth, const cv::Mat &im100,
 int
 main(int argc, char **argv)
 {
+  std::vector<std::string> nomes{"h", "", "", "","", "noite", "entrar", 
+                                 "tudo", "comecar", "curso"};
+
   auto device = rscg::CameraDeviceRSWindows();
   rscg::GraphProbs graph{200};
 
@@ -308,8 +311,8 @@ main(int argc, char **argv)
     }
   
     char reskey = (char)cv::waitKey(60);
-    if(reskey == 'q') {
-      setToStop = true;
+    if(reskey == 'q') { 
+      setToStop = true; 
     }
     else if(reskey == 'c') {
       ++clsNum;

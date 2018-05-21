@@ -6,6 +6,7 @@ lucasthund3r@gmail.com
 """
 from keras.models import Sequential
 from keras.layers import Conv2D
+from keras.layers import Conv3D
 from keras.layers import Flatten
 from keras.layers import Dense
 from keras.layers import LSTM
@@ -50,21 +51,28 @@ testSeqIt.set_max_length(max_sequence_length)
 seqIt.set_max_length(max_sequence_length)
 
 classifier = Sequential()
-classifier.add(TimeDistributed(Conv2D(32, (10, 10), input_shape=(50, 50, 1),
-                               activation='relu'),
-                               input_shape=(max_sequence_length, 50, 50, 1)))
-classifier.add(TimeDistributed(MaxPooling2D(pool_size=(2, 2))))
-classifier.add(TimeDistributed(Conv2D(32, (5, 5), input_shape=(25, 25, 1),
-                                      activation='relu')))
-classifier.add(TimeDistributed(MaxPooling2D(pool_size=(2, 2))))
-classifier.add(TimeDistributed(Flatten()))
-classifier.add(LSTM(units=180, activation='tanh', return_sequences=True,
-                    input_shape=(max_sequence_length, 25*25)))
-classifier.add(LSTM(units=86, activation='tanh', return_sequences=True))
-classifier.add(LSTM(units=34, activation='tanh'))
+classifier.add(Conv3D(32, (2, 2, 2), input_shape=(max_sequence_length, 50, 50, 1)))
+classifier.add(Flatten())
 classifier.add(Dense(units=4, activation='softmax'))
 classifier.compile(optimizer='adam', loss='categorical_crossentropy',
                    metrics=['accuracy', metrics.categorical_accuracy])
+
+
+#classifier.add(TimeDistributed(Conv2D(32, (10, 10), input_shape=(50, 50, 1),
+#                               activation='relu'),
+#                               input_shape=(max_sequence_length, 50, 50, 1)))
+#classifier.add(TimeDistributed(MaxPooling2D(pool_size=(2, 2))))
+#classifier.add(TimeDistributed(Conv2D(32, (5, 5), input_shape=(25, 25, 1),
+#                                      activation='relu')))
+#classifier.add(TimeDistributed(MaxPooling2D(pool_size=(2, 2))))
+#classifier.add(TimeDistributed(Flatten()))
+#classifier.add(LSTM(units=180, activation='tanh', return_sequences=True,
+#                    input_shape=(max_sequence_length, 25*25)))
+#classifier.add(LSTM(units=86, activation='tanh', return_sequences=True))
+#classifier.add(LSTM(units=34, activation='tanh'))
+#classifier.add(Dense(units=4, activation='softmax'))
+#classifier.compile(optimizer='adam', loss='categorical_crossentropy',
+#                   metrics=['accuracy', metrics.categorical_accuracy])
 
 classifier.summary()
 
