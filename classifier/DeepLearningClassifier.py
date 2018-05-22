@@ -53,6 +53,8 @@ seqIt.set_max_length(max_sequence_length)
 classifier = Sequential()
 classifier.add(Conv3D(32, (2, 2, 2), input_shape=(max_sequence_length, 50, 50, 1)))
 classifier.add(Flatten())
+classifier.add(Dense(units=80, activation='relu'))
+classifier.add(Dense(units=42, activation='relu'))
 classifier.add(Dense(units=4, activation='softmax'))
 classifier.compile(optimizer='adam', loss='categorical_crossentropy',
                    metrics=['accuracy', metrics.categorical_accuracy])

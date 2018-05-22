@@ -1,6 +1,7 @@
 import numpy as np
 import cv2 as cv
 import os
+import threading
 from shutil import copyfile
 
 
@@ -130,6 +131,10 @@ for idx, uncut_vid_path in enumerate(sorted(os.listdir(folder_src), key=len)):
     show_top.clear()
     show_botton.clear()
 
+    curr_first = 0
+    length_show = 10
+    curr_last = curr_first + length_show
+
     loading = True
     while cutting:
 
@@ -140,7 +145,7 @@ for idx, uncut_vid_path in enumerate(sorted(os.listdir(folder_src), key=len)):
             range_video = curr_last - curr_first
             fps = 0
             curr_video_show.clear()
-            for idx_rng in range(curr_first, curr_last):
+            for idx_rng in range(curr_first, max(curr_first+1, min(curr_last + 1, len(uncut_video_folder) - 1))):
                 curr_video_show.append(cv.imread(uncut_video_folder[idx_rng]))
 
             for idx_rng in range(curr_first, curr_first + 5):
@@ -215,7 +220,9 @@ for idx, uncut_vid_path in enumerate(sorted(os.listdir(folder_src), key=len)):
 
         if cut:
             cut_pieces[idx].append((curr_first, curr_last))
-            copy_videos_to_dest(curr_first, curr_last, idx)
+            thread = threading.Thread(target=copy_videos_to_dest,
+                                      args=(curr_first, curr_last, idx))
+            thread.start()
             initial_cut = curr_last
             curr_first = curr_last
             if curr_first == len(uncut_video_folder) - 1:
