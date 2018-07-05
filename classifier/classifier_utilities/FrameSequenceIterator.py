@@ -65,13 +65,13 @@ class SequenceImageIterator(Iterator):
         self.sequences_per_class = []
         for class_name in self.class_indices:
             # salvando a quantidade de sequencias por classe = total samples
-
             cur_cls_dir = os.path.join(directory, class_name)
 
             seqdirname = sorted(os.listdir(cur_cls_dir))
             self.samples += len(seqdirname)
 
-            self.sequences_per_class.append([os.path.join(cur_cls_dir, l)
+            self.sequences_per_class.extend([(os.path.join(cur_cls_dir, l),
+                                              self.class_indices[class_name])
                                              for l in os.listdir(cur_cls_dir)])
             for seqName in seqdirname:
                 curlen = len(os.listdir(os.path.join(cur_cls_dir, seqName)))
@@ -108,22 +108,13 @@ class SequenceImageIterator(Iterator):
             .reshape((self.target_size[0], self.target_size[1]))
 
         for i1, j in enumerate(index_array):
-            cls = 0
-            cls_sum_aux = 0
-            for it_cls_num in range(0, len(self.sequences_per_class)):
-                if j > cls_sum_aux:
-                    cls = it_cls_num
-                cls_sum_aux += len(self.sequences_per_class[it_cls_num])
 
-            sclsaux = sum([len(self.sequences_per_class[s1])
-                           for s1 in range(0, cls)])
-            curseq = j - sclsaux - 1
-
-            seqdir = self.sequences_per_class[cls][curseq]
+            seqdir = self.sequences_per_class[j][0]
 
             last = -1
             seqimgs = sorted(os.listdir(seqdir), key=len)
             curseqlen = self.max_seq_length if self.normalize_seq else len(seqimgs)
+
             for i2 in range(0, curseqlen):
                 i2norm = int(i2 / (self.max_seq_length / len(seqimgs))) if self.normalize_seq else i2
                 name = os.path.join(seqdir, seqimgs[i2norm])
@@ -140,12 +131,7 @@ class SequenceImageIterator(Iterator):
         batch_y = np.zeros((len(index_array), len(self.class_indices)),
                            dtype=K.floatx())
         for it, label in enumerate(index_array):
-            cls = 0
-            cls_sum_aux = 0
-            for it_cls_num in range(0, len(self.sequences_per_class)):
-                if label > cls_sum_aux:
-                    cls = it_cls_num
-                cls_sum_aux += len(self.sequences_per_class[it_cls_num])
-
+            cls = self.sequences_per_class[label][1]
             batch_y[it, cls] = 1
+
         return batch_x, batch_y

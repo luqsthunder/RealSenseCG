@@ -7,6 +7,7 @@ tvieira@ic.ufal.br
 # Importing the Keras libraries and packages
 
 
+import numpy as np
 from keras.models import Sequential
 from keras.layers import Conv2D
 from keras.layers import MaxPooling2D
@@ -16,7 +17,6 @@ from keras.preprocessing.image import ImageDataGenerator
 
 import socket
 import struct
-import numpy as np
 import scipy.misc
 
 # Initialising the CNN
@@ -34,14 +34,14 @@ classifier.compile(optimizer='adam', loss='categorical_crossentropy',
 
 classifier.summary()
 
-# Part 2 - Fitting the CNN to the images
+# %%Part 2 - Fitting the CNN to the images
 
 
 dist_dir = '../Gestures/static_poses_depth/F1/'
 depth_dir = '../Gestures/static_poses_dist/F1/'
 
 iFold = 1
-train_datagen = ImageDataGenerator(rescale=1./255)
+train_datagen = ImageDataGenerator(rescale=1./255, zoom_range=.2)
 
 test_datagen = ImageDataGenerator(rescale=1./255)
 
@@ -68,11 +68,8 @@ classifier.fit_generator(training_set,
                          validation_data=test_set,
                          validation_steps=test_set.samples/32)
 score = classifier.predict_generator(test_set)
-								 
-								 
-import numpy as np
 
-w, h = 14, 14;
+w, h = 14, 14
 mat = [[0 for x in range(w)] for y in range(h)] 
 k = 0
 for i in range(1400):
@@ -84,8 +81,8 @@ print(mat)
 print(test_set.class_indices)
 
 
+# %%  server
 def server():
-	# %%%%%%%  SERVIDOR  %%%%%%%%%%%%%%
 
 	TCP_IP = '127.0.0.1'
 	TCP_PORT = 31000

@@ -45,17 +45,13 @@ def copy_videos_to_dest(first, last, class_number):
                                       'P' + str(class_number + 1), 'e' +
                                       str(videos_count))
 
-    if not os.path.exists(curr_folder_dst_nd):
-        os.makedirs(curr_folder_dst_nd)
+    os.makedirs(curr_folder_dst_nd)
 
-    if not os.path.exists(curr_folder_dst_cd):
-        os.makedirs(curr_folder_dst_cd)
+    os.makedirs(curr_folder_dst_cd)
 
-    if not os.path.exists(curr_folder_dst_md):
-        os.makedirs(curr_folder_dst_md)
+    os.makedirs(curr_folder_dst_md)
 
-    if not os.path.exists(curr_folder_dst_10):
-        os.makedirs(curr_folder_dst_10)
+    os.makedirs(curr_folder_dst_10)
 
     cont_img_fps = 0
     for video_frames_idx in range(first, last + 1):
@@ -142,7 +138,7 @@ for idx, uncut_vid_path in enumerate(sorted(os.listdir(folder_src), key=len)):
             show_top.clear()
             show_botton.clear()
 
-            range_video = curr_last - curr_first
+            range_video = max(curr_last - curr_first, 1)
             fps = 0
             curr_video_show.clear()
             for idx_rng in range(curr_first, max(curr_first+1, min(curr_last + 1, len(uncut_video_folder) - 1))):
@@ -223,6 +219,7 @@ for idx, uncut_vid_path in enumerate(sorted(os.listdir(folder_src), key=len)):
             thread = threading.Thread(target=copy_videos_to_dest,
                                       args=(curr_first, curr_last, idx))
             thread.start()
+#            copy_videos_to_dest(curr_first, curr_last, idx)
             initial_cut = curr_last
             curr_first = curr_last
             if curr_first == len(uncut_video_folder) - 1:

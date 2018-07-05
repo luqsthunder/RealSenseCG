@@ -11,9 +11,11 @@ from keras.layers import Flatten
 from keras.layers import Dense
 from keras.layers import LSTM
 from keras.layers import MaxPooling2D
+from keras.layers import MaxPooling3D
 from keras.preprocessing.image import ImageDataGenerator
 from keras.layers import TimeDistributed
 from keras import metrics
+from keras.callbacks import Callback
 
 import socket
 import struct
@@ -35,64 +37,158 @@ testDirName = '../Gestures/dynamic_poses/Folders/F1/test/'
 
 seqIt = SequenceImageIterator(dirname, ImageDataGenerator(rescale=1./255),
                               target_size=(50, 50), color_mode='grayscale',
-                              batch_size=64, class_mode='categorical',
+                              batch_size=10, class_mode='categorical',
                               normalize_seq=False)
 
 testSeqIt = SequenceImageIterator(testDirName,
                                   ImageDataGenerator(rescale=1./255),
                                   target_size=(50, 50), color_mode='grayscale',
-                                  batch_size=64, class_mode='categorical',
-                                  normalize_seq=False)
+                                  batch_size=10, class_mode='categorical',
+                                  normalize_seq=False, shuffle=False)
 
 # Initialising the LSTM + CNN per Timestep
 
-max_sequence_length = max(seqIt.max_seq_length, testSeqIt.max_seq_length)
-testSeqIt.set_max_length(max_sequence_length)
-seqIt.set_max_length(max_sequence_length)
-
-classifier = Sequential()
-classifier.add(Conv3D(32, (2, 2, 2), input_shape=(max_sequence_length, 50, 50, 1)))
-classifier.add(Flatten())
-classifier.add(Dense(units=80, activation='relu'))
-classifier.add(Dense(units=42, activation='relu'))
-classifier.add(Dense(units=4, activation='softmax'))
-classifier.compile(optimizer='adam', loss='categorical_crossentropy',
-                   metrics=['accuracy', metrics.categorical_accuracy])
+max_seq_len = max(seqIt.max_seq_length, testSeqIt.max_seq_length)
+testSeqIt.set_max_length(max_seq_len)
+seqIt.set_max_length(max_seq_len)
 
 
-#classifier.add(TimeDistributed(Conv2D(32, (10, 10), input_shape=(50, 50, 1),
-#                               activation='relu'),
-#                               input_shape=(max_sequence_length, 50, 50, 1)))
-#classifier.add(TimeDistributed(MaxPooling2D(pool_size=(2, 2))))
-#classifier.add(TimeDistributed(Conv2D(32, (5, 5), input_shape=(25, 25, 1),
-#                                      activation='relu')))
-#classifier.add(TimeDistributed(MaxPooling2D(pool_size=(2, 2))))
-#classifier.add(TimeDistributed(Flatten()))
-#classifier.add(LSTM(units=180, activation='tanh', return_sequences=True,
-#                    input_shape=(max_sequence_length, 25*25)))
-#classifier.add(LSTM(units=86, activation='tanh', return_sequences=True))
-#classifier.add(LSTM(units=34, activation='tanh'))
-#classifier.add(Dense(units=4, activation='softmax'))
-#classifier.compile(optimizer='adam', loss='categorical_crossentropy',
-#                   metrics=['accuracy', metrics.categorical_accuracy])
+class MaxWeights(Callback):
+    def __init__(self):
+        self.max_acc = -1
+        self.acc_hist = []
+        self.weights = []
 
-classifier.summary()
-
-# Fit the classifier
-score = classifier.fit_generator(seqIt
-                                 , steps_per_epoch=80
-                                 , epochs=10
-                                 , validation_data=testSeqIt
-                                 , validation_steps=testSeqIt.samples/32)
+    def on_epoch_end(self, epoch, logs=None):
+        curr_acc = logs['val_categorical_accuracy']
+        if curr_acc > self.max_acc:
+            self.max_acc = curr_acc
+            self.weights = self.model.get_weights()
+        self.acc_hist.append(curr_acc)
 
 
-# %% features for SVM
+# %% classifier
+def train_lstm(lstm_units, amount_filters, filters):
+    classifier = Sequential()
+
+    classifier.add(TimeDistributed(Conv2D(amount_filters, filters[0],
+                                          input_shape=(50, 50, 1),
+                                          activation='relu'),
+                                   input_shape=(max_seq_len, 50, 50, 1)))
+    classifier.add(TimeDistributed(MaxPooling2D(pool_size=(2, 2))))
+
+    if len(filters) > 1:
+        classifier.add(TimeDistributed(Conv2D(amount_filters, filters[1],
+                                              activation='relu')))
+        classifier.add(TimeDistributed(MaxPooling2D(pool_size=(2, 2))))
+
+    classifier.add(TimeDistributed(Flatten()))
+
+    classifier.add(LSTM(units=lstm_units[0], activation='tanh',
+                        return_sequences=True if len(lstm_units) > 1 else False,
+                        input_shape=(max_seq_len, 25 * 25)))
+    if len(lstm_units) > 1:
+        classifier.add(LSTM(units=lstm_units[1], activation='tanh',
+                            return_sequences=True if len(lstm_units) > 2
+                                             else False))
+    if len(lstm_units) > 2:
+        classifier.add(LSTM(units=lstm_units[2], activation='tanh'))
+
+    classifier.add(Dense(units=10, activation='softmax'))
+    classifier.compile(optimizer='adam', loss='categorical_crossentropy',
+                       metrics=['accuracy', metrics.categorical_accuracy])
+
+    classifier.summary()
+
+    max_weights = MaxWeights()
+    # Fit the classifier
+    classifier.fit_generator(seqIt
+                             , callbacks=[max_weights]
+                             , steps_per_epoch=190
+                             , epochs=15
+                             , validation_data=testSeqIt
+                             , validation_steps=testSeqIt.samples/10)
+
+    classifier.set_weights(max_weights.weights)
+    classifier.save('model_lstm{}_cnn{}.h5'.format(lstm_units, filters))
+    classifier.save_weights('model_weights_lstm{}_cnn{}.h5'.format(lstm_units,
+                                                                   filters))
+    conf_mat = np.zeros((10, 10))
+    for idx in range(900):
+        spl = testSeqIt._get_batches_of_transformed_samples([idx])
+        pred = classifier.predict(spl[0])
+        cls = np.argmax(spl[1])
+        classifier.reset_states()
+        k = np.argmax(pred)
+        conf_mat[cls, k] += 1
+
+    out_str = 'lstm units {}\n' + \
+              'best val categorical accuracy {}\n' + \
+              'confusion mat for best epoch \n{}\n' + \
+              'all accuracy per epoch \n{}\n\n'
+
+    print(out_str.format(lstm_units, max_weights.max_acc, conf_mat,
+                         max_weights.acc_hist))
 
 
+train_lstm([100, 100], 64, [[3, 3], [3, 3]])
 
-# %% SVM classifier
+
+# %% cnn3D
+def train_cnn3d(dense_units, cnn, filter_amount):
+    classifier = Sequential()
+    f0 = cnn[0]
+    f1 = cnn[1]
+    classifier.add(Conv3D(filter_amount, (f0, f0, f0),
+                          input_shape=(max_seq_len, 50, 50, 1)))
+    classifier.add(MaxPooling3D(pool_size=(2, 2, 2)))
+    classifier.add(Conv3D(filter_amount, (f1, f1, f1),
+                          input_shape=(max_seq_len, 50, 50, 1)))
+    classifier.add(MaxPooling3D(pool_size=(2, 2, 2)))
+    classifier.add(Flatten())
+    classifier.add(Dense(units=dense_units[0], activation='relu'))
+    if len(dense_units) > 1:
+        classifier.add(Dense(units=dense_units[1], activation='relu'))
+    if len(dense_units) > 2:
+        classifier.add(Dense(units=dense_units[2], activation='relu'))
+    classifier.add(Dense(units=10, activation='softmax'))
+    classifier.compile(optimizer='adam', loss='categorical_crossentropy',
+                       metrics=['accuracy', metrics.categorical_accuracy])
+
+    classifier.summary()
+    max_weights = MaxWeights()
+#    Fit the classifier
+    classifier.fit_generator(seqIt
+                             , callbacks=[max_weights]
+                             , steps_per_epoch=190
+                             , epochs=15
+                             , validation_data=testSeqIt
+                             , validation_steps=testSeqIt.samples/10)
+
+    classifier.set_weights(max_weights.weights)
+    classifier.save('model_cnn3d{}_cnn{}_amount_' +
+                    'filter{}.h5'.format(dense_units, cnn, filter_amount))
+    classifier.save_weights('model_weights_cnn3d{}_cnn{}_' +
+                            'amount_filter{}.h5'.format(dense_units, cnn))
+    conf_mat = np.zeros((10, 10))
+    for idx in range(900):
+        spl = testSeqIt._get_batches_of_transformed_samples([idx])
+        pred = classifier.predict(spl[0])
+        cls = np.argmax(spl[1])
+        classifier.reset_states()
+        k = np.argmax(pred)
+        conf_mat[cls, k] += 1
+
+    out_str = 'lstm units {}\n' + \
+              'best val categorical accuracy {}\n' + \
+              'confusion mat for best epoch \n{}\n' + \
+              'all accuracy per epoch \n{}\n\n'
+
+    print(out_str.format(dense_units, max_weights.max_acc, conf_mat,
+                         max_weights.acc_hist))
 
 
+train_cnn3d([300, 200, 100], [3, 3], 64)
 
 # %%%%%%%  SERVIDOR  %%%%%%%%%%%%%%
 
@@ -126,7 +222,7 @@ while 1: # WHILE INFINITO PARA SEMPRE ESTAR RECEBENDO IMAGENS
 
     # CONVERTE A IMAGEM PARA O FORMATO DO KERAS
     imgint=struct.unpack("2500I", buffer)   #"307200I",buffer)
-  
+
     npimg=np.array(imgint).reshape(50,50)
     sciimg = scipy.misc.toimage(npimg)
     imglow=sciimg.resize((50,50))
@@ -138,4 +234,3 @@ while 1: # WHILE INFINITO PARA SEMPRE ESTAR RECEBENDO IMAGENS
     for i in range(1, len(predvec[0])):
         predvecstr = "%s %f" % (predvecstr,predvec[0][i])
     conn.send(predvecstr.encode())
-

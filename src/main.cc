@@ -217,7 +217,7 @@ saveSingleImage(const cv::Mat &imCDepth, const cv::Mat &im100,
 int
 main(int argc, char **argv)
 {
-  std::vector<std::string> nomes{"h", "", "", "","", "noite", "entrar", 
+  std::vector<std::string> nomes{"h", "dia", "", "","J", "noite", "entrar", 
                                  "tudo", "comecar", "curso"};
 
   auto device = rscg::CameraDeviceRSWindows();
