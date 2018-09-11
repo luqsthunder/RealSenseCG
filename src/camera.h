@@ -5,7 +5,7 @@
 #include <array>
 
 #include <pxcsensemanager.h>
-
+#include <opencv2/core.hpp>
 #include <Kinect.h>
 
 #include "RSCGutils.h"
@@ -32,16 +32,33 @@ public:
   ~CameraDeviceKinect();
 
   void fetchDepthFrame() override;
+  void fetchSkeleton();
 
-  const std::vector<uint16_t>& getDepthFrame1Chanels();
-  const std::vector<uint16_t>& getDepthFrame3Chanels();
+  const cv::Mat& getDepthFrame1Chanels();
+  const cv::Mat& getDepthFrame3Chanels();
+
+  const std::vector<Joint>& getSkeletonJointVec();
+  const int64_t getCurrentTimeSkeletonFrame();
+
+  void renderSkeletonJointsToDepth();
+
+  const cv::Point2f
+  worldToScreenPoint(const CameraSpacePoint& bodyPoint, 
+                     const cv::Size windowSize);
 
   const rscg::Intrinsics& intrinsics() override;
 private:
-  std::vector<uint16_t> imgdepth3;
-  std::vector<uint16_t> imgdepth;
+  cv::Mat _imgdepth3, _imgdepth, _screenSkell;
+  int64_t _currentTime;
+  bool _skellTracked;
+  std::vector<Joint> _joints;
+
+  using bone = std::pair<JointType, JointType>;
+  const std::vector<bone> _bones;
 
   IKinectSensor *_paSensor;
+  IBodyFrameReader* _paBodyFrameReader;
+  ICoordinateMapper* _paCoordinateMapper;
   IDepthFrameReader *_paReaderFrame;
   rscg::Intrinsics _intri;
 };

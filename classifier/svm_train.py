@@ -14,6 +14,8 @@ from keras.callbacks import Callback
 from keras.preprocessing.image import load_img
 from keras.preprocessing.image import img_to_array
 
+from sklearn.model_selection import GridSearchCV
+
 # %% others
 import socket
 import struct
@@ -61,9 +63,9 @@ np.random.shuffle(train)
 
 np.random.seed(5)
 np.random.shuffle(test)
-
-classifier = SGDClassifier(alpha=.0001, learning_rate='optimal', verbose=2)
 # %%
+classifier = SGDClassifier(alpha=.0001, learning_rate='optimal', verbose=2)
+
 last = 0
 cls = np.arange(10)
 for s in range(int(len(train) / 32)):
@@ -129,32 +131,41 @@ for s in range(1, int(len(test) / 32)):
     print(curr)
     last = curr
 
-classifier = SVC(C=1.0, kernel='rbf', gamma=.1)
-classifier.fit(x_all, y_all)
-y_pred = classifier.predict(x_all_test)
-print('gamma {} acc {}'.format(.1, accuracy_score(y_all_test, y_pred)))
+# %%
 
-classifier = SVC(C=1.0, kernel='rbf', gamma=.5)
-classifier.fit(x_all, y_all)
-y_pred = classifier.predict(x_all_test)
-print('gamma {} acc {}'.format('.5', accuracy_score(y_all_test, y_pred)))
+parameters = {'kernel': ['rbf'], 'C': [1, .1, .3, .5, .7, .9, 0],
+              'gamma': [1, .1, .3, .5, .7, .9]}
+svc = SVC()
+clf = GridSearchCV(svc, parameters, verbose=1, cv=2)
+clf.fit(x_all, y_all)
+y_pred = clf.predict(x_all_test)
+print("acc {}".format(accuracy_score(y_all_test, y_pred)),
+      file=open('grid_search.txt', 'w'))
+print("acc {}".format(accuracy_score(y_all_test, y_pred)))
 
-classifier = SVC(C=1.0, kernel='rbf', gamma=1)
-classifier.fit(x_all, y_all)
-y_pred = classifier.predict(x_all_test)
-print('gamma {} acc {}'.format('1', accuracy_score(y_all_test, y_pred)))
+print('best param : \n{}'.format(clf.best_params_),
+      file=open('best_params_svm', 'w'))
+print('best param : \n{}'.format(clf.best_params_))
 
-classifier = SVC(C=1.0, kernel='rbf', gamma=10)
-classifier.fit(x_all, y_all)
-y_pred = classifier.predict(x_all_test)
-print('gamma {} acc {}'.format('10', accuracy_score(y_all_test, y_pred)))
+# %%
+file_svm = open('file_svm.txt', 'a+')
 
-classifier = SVC(C=1.0, kernel='rbf', gamma=100)
-classifier.fit(x_all, y_all)
-y_pred = classifier.predict(x_all_test)
-print('gamma {} acc {}'.format('100', accuracy_score(y_all_test, y_pred)))
 
-classifier = SVC(C=1.0, kernel='rbf', gamma=1000)
-classifier.fit(x_all, y_all)
-y_pred = classifier.predict(x_all_test)
-print('gamma {} acc {}'.format('1000', accuracy_score(y_all_test, y_pred)))
+def run_svc(ct, gm):
+    clfs = SVC(C=ct, kernel='rbf', gamma=gm)
+    clfs.fit(x_all, y_all)
+    y_pr = clfs.predict(x_all_test)
+    print('c {} ,gamma {}, acc {}'.format(ct, gm,
+                                          accuracy_score(y_all_test, y_pr)),
+          file=file_svm)
+    print('c {} ,gamma {}, acc {}'.format(ct, gm,
+                                          accuracy_score(y_all_test, y_pr)))
+
+
+c = [1, .2, .3, .5, .7, .9, .1, 0]
+g = [1, .2, .3, .5, .7, .9, .1]
+
+for itc in c:
+    for itg in g:
+        run_svc(itc, itg)
+

@@ -9,7 +9,7 @@ namespace rscg
 class Window
 {
 public:
-  Window(unsigned w = 800, unsigned h = 600);
+  Window(unsigned w = 1366, unsigned h = 768);
   ~Window();
 
   operator SDL_Window*() const;

@@ -16,6 +16,7 @@ from keras.preprocessing.image import ImageDataGenerator
 from keras.layers import TimeDistributed
 from keras import metrics
 from keras.callbacks import Callback
+from keras import backend as K
 
 import socket
 import struct
@@ -37,13 +38,13 @@ testDirName = '../Gestures/dynamic_poses/Folders/F1/test/'
 
 seqIt = SequenceImageIterator(dirname, ImageDataGenerator(rescale=1./255),
                               target_size=(50, 50), color_mode='grayscale',
-                              batch_size=10, class_mode='categorical',
+                              batch_size=64, class_mode='categorical',
                               normalize_seq=False)
 
 testSeqIt = SequenceImageIterator(testDirName,
                                   ImageDataGenerator(rescale=1./255),
                                   target_size=(50, 50), color_mode='grayscale',
-                                  batch_size=10, class_mode='categorical',
+                                  batch_size=64, class_mode='categorical',
                                   normalize_seq=False, shuffle=False)
 
 # Initialising the LSTM + CNN per Timestep
@@ -107,7 +108,7 @@ def train_lstm(lstm_units, amount_filters, filters):
                              , steps_per_epoch=190
                              , epochs=15
                              , validation_data=testSeqIt
-                             , validation_steps=testSeqIt.samples/10)
+                             , validation_steps=testSeqIt.samples/64)
 
     classifier.set_weights(max_weights.weights)
     classifier.save('model_lstm{}_cnn{}.h5'.format(lstm_units, filters))
@@ -129,9 +130,8 @@ def train_lstm(lstm_units, amount_filters, filters):
 
     print(out_str.format(lstm_units, max_weights.max_acc, conf_mat,
                          max_weights.acc_hist))
-
-
-train_lstm([100, 100], 64, [[3, 3], [3, 3]])
+    print(out_str.format(lstm_units, max_weights.max_acc, conf_mat,
+                         max_weights.acc_hist), file=open('lstm64.txt', 'w'))
 
 
 # %% cnn3D
@@ -161,9 +161,9 @@ def train_cnn3d(dense_units, cnn, filter_amount):
     classifier.fit_generator(seqIt
                              , callbacks=[max_weights]
                              , steps_per_epoch=190
-                             , epochs=15
+                             , epochs=5
                              , validation_data=testSeqIt
-                             , validation_steps=testSeqIt.samples/10)
+                             , validation_steps=testSeqIt.samples/64)
 
     classifier.set_weights(max_weights.weights)
     classifier.save('model_cnn3d{}_cnn{}_amount_' +
@@ -186,9 +186,13 @@ def train_cnn3d(dense_units, cnn, filter_amount):
 
     print(out_str.format(dense_units, max_weights.max_acc, conf_mat,
                          max_weights.acc_hist))
-
+    print(out_str.format(dense_units, max_weights.max_acc, conf_mat,
+                         max_weights.acc_hist), file=open('cnn3D64.txt', 'w'))
 
 train_cnn3d([300, 200, 100], [3, 3], 64)
+K.clear_session()
+train_lstm([100, 100], 64, [[3, 3], [3, 3]])
+K.clear_session()
 
 # %%%%%%%  SERVIDOR  %%%%%%%%%%%%%%
 

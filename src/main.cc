@@ -1,16 +1,12 @@
 #include <iostream>
 #include <fstream>
 #include <memory>
-#include <climits>
 #include <vector>
 #include <algorithm>
 #include <thread>
 #include <future>
-#include <cstdio>
-#include <climits>
 
 #include <opencv2/opencv.hpp>
-#include <opencv2/dnn.hpp>
 
 #include <SFML/Network.hpp>
 
@@ -42,27 +38,6 @@
 #include "rect.h"
 #include "graphprobs.h"
 
-void
-writePPMu16(const std::string &name, const cv::Mat &im) {
-  std::ofstream file;
-  file.open(name, std::ios::app);
-  const uint16_t maxDepth = 1840;
-  file << "P3" << '\n';
-  file << uint16_t(640) << " " << uint16_t(480) << '\n';
-  file << maxDepth << '\n';
-  
-  uint16_t value = 0;
-
-  for(uint32_t y = 0; y < 480; ++y) {
-    for(uint32_t x = 0; x < 640; ++x) {
-      value = im.at<uint16_t>(y, x);
-      file <<  value << ' '<< value << ' ' << value << "  ";
-    }
-    if (y < 480) file << '\n';
-  }
-  file.close();
-}
-
 std::vector<float>
 classifyImgNet(sf::TcpSocket &sock, const std::vector<int> &im,
                cv::Size imSize) {
@@ -93,16 +68,6 @@ classifyImgNet(sf::TcpSocket &sock, const std::vector<int> &im,
   
   return resultVec;
 } 
-
-
-class ImageClassifier {
-public:
-  ImageClassifier();
-
-  const std::vector<float>& classifyImage(const cv::Mat &im);
-private:
-  sf::Socket _socket;
-};
 
 cv::Mat cutImage(const cv::Mat& im, const cv::Size &size);
 
@@ -213,41 +178,19 @@ saveSingleImage(const cv::Mat &imCDepth, const cv::Mat &im100,
   return true;
 }
 
-
 int
 main(int argc, char **argv)
 {
-  std::vector<std::string> nomes{"h", "dia", "", "","J", "noite", "entrar", 
-                                 "tudo", "comecar", "curso"};
-
-  auto device = rscg::CameraDeviceRSWindows();
-  rscg::GraphProbs graph{200};
-
+  auto device = rscg::CameraDeviceKinect();
   bool setToStop = false;
 
-  cv::Mat frame                   {480, 640, CV_8UC1  ,  cv::Scalar(0)},
-          frameColor              {480, 640, CV_8UC3  ,  cv::Scalar(0)},
-          frame16C                {480, 640, CV_16UC1 ,  cv::Scalar(0)},
-          frame16CColor           {480, 640, CV_16UC3 ,  cv::Scalar(0)},
-          frameNormDepthRng       {480, 640, CV_8UC1  ,  cv::Scalar(0)},
-          frameNormDepthRngColor  {480, 640, CV_8UC3  ,  cv::Scalar(0)},
-          frameModDepthRng        {480, 640, CV_8UC1  ,  cv::Scalar(0)},
-          frameModDepthRngColor   {480, 640, CV_8UC3  ,  cv::Scalar(0)},
-          graphIm                 {480, 640, CV_8UC3  ,  cv::Scalar(0)},
-          im100x100               {100, 100, CV_8UC1  ,  cv::Scalar(0)},
-          im100x100Color          {100, 100, CV_8UC3  ,  cv::Scalar(0)};
-
-  int thresh = 200;
-
   cv::namedWindow("frame", 0);
-  cv::createTrackbar("thresh", "frame", &thresh, 1000);
 
   std::vector<int> imToClassify;
   imToClassify.resize(50 * 50 * 3);
 
-  uint16_t value = 0, depthCloserCam = 9999;
   uint16_t maxValueCap = 0;
-  const uint16_t maxDepth = 1840;//32727;
+  const uint16_t maxDepthRS = 1840;;
   uint8_t normValue = 0;
 
   sf::TcpSocket sock;
@@ -262,116 +205,62 @@ main(int argc, char **argv)
 
   bool recording = false;
 
-  cv::Mat fullIm{480 * 2, 640 * 3, CV_8UC3, cv::Scalar(0)};
-
   int fontFace = cv::FONT_HERSHEY_SCRIPT_SIMPLEX;
   double fontScale = 1;
   int thickness = 3;
   int baseline;
 
   int clsNum = 1;
-  size_t cont = amountImgUncutClsFolder(clsNum, "norm_depth");
 
   bool isSavingVideos = false;
 
+  std::vector<cv::Mat> videoDepth;
+  std::vector<CameraSpacePoint> joints;
+  joints.resize(60 * 20);
+  for(int i = 0; i < 60 * 20; ++i) {
+    videoDepth.push_back(cv::Mat{424, 512, CV_16UC1, cv::Scalar(0)});
+  }
+
+  unsigned cont = 0;
+
+  cv::VideoWriter videoWriter;
+
   while(!setToStop || recording) {
     device.fetchDepthFrame();
-
-    // find the closest depth from camera
-    depthCloserCam = 9999;
-    for(const auto &it : device.getDepthFrame1Chanels()) {
-      if(it != 0 && it < depthCloserCam) {
-        depthCloserCam = it;
-      }
-    }
-
-    for(size_t y = 0; y < 640; ++y) {
-      for(size_t x = 0; x < 480; ++x) {
-        value = device.getDepthFrame1Chanels()[x * 640 + y];
-
-        if(value > maxValueCap)
-          maxValueCap = value;
-
-        frame.at<uint8_t>(x, y) = value % 255;
-        frame16C.at<uint16_t>(x, y) = 
-          ((value < (uint16_t)thresh + depthCloserCam) && (value > 10) ?
-            value : 0);
-
-         // normalizing using linear interpolation
-         normValue = (uint8_t)((255.00) * ((double)value / (double)maxDepth));
-
-        frameNormDepthRng.at<uint8_t>(x, y) =
-          ( (value < (uint16_t)thresh + depthCloserCam) ? 
-           normValue: 0);
-
-        frameModDepthRng.at<uint8_t>(x, y) =
-          ((value < (uint16_t)thresh + depthCloserCam) ?
-           value % 255 : 0);
-      }
-    }
+    device.fetchSkeleton();
   
     char reskey = (char)cv::waitKey(60);
     if(reskey == 'q') { 
       setToStop = true; 
     }
-    else if(reskey == 'c') {
-      ++clsNum;
-      cont = amountImgUncutClsFolder(clsNum, "norm_depth");
-    }
-    else if(reskey == 'v') {
-      --clsNum;
-      cont = amountImgUncutClsFolder(clsNum, "norm_depth");
-    }
     else if(reskey == ' ') {
       recording = !recording;
+      if(recording) {
+        bool res = videoWriter.open("testVideo.avi", 
+                                    CV_FOURCC('M', 'J', 'P', 'G'), 15,
+                                    {512, 424}, true);
+        if(!res) {
+          std::cout << "cannot create video writer \n";
+        }
+      }
     }
-
-    cv::resize(frameNormDepthRng, im100x100, cv::Size{100, 100}, 0, 0, 
-               CV_INTER_AREA);
-
-    cv::cvtColor(frame, frameColor, cv::COLOR_GRAY2BGR);
-    frameColor.copyTo(fullIm(cv::Rect(0, 0, frameColor.cols, 
-                                      frameColor.rows)));
-    cv::cvtColor(frameNormDepthRng, frameNormDepthRngColor, 
-                 cv::COLOR_GRAY2BGR);
-    frameNormDepthRngColor.copyTo(fullIm(cv::Rect(640, 0, 
-                                         frameNormDepthRngColor.cols,
-                                         frameColor.rows)));
-
-    cv::cvtColor(frameModDepthRng, frameModDepthRngColor, cv::COLOR_GRAY2BGR);
-    frameModDepthRngColor.copyTo(fullIm(cv::Rect(2*640, 0, frameModDepthRngColor.cols, 
-                                       frameModDepthRngColor.rows)));
-                                       
-    graphIm.copyTo(fullIm(cv::Rect(0, 480, graphIm.cols,
-                                   graphIm.rows)));
-
-    cv::Size textSize = cv::getTextSize(std::to_string(cont), fontFace,
-                                        fontScale, thickness, &baseline);
-    cv::putText(fullIm, std::to_string(cont), {0, 25}, fontFace, fontScale,
-                cv::Scalar(0, 128, 0), 1, 1);
-
-    textSize = cv::getTextSize(std::string("cls name:")
-                               + std::to_string(clsNum), fontFace, fontScale,
-                               thickness, &baseline);
-    cv::putText(fullIm, std::string("cls name:") + std::to_string(clsNum),
-                {0, 75}, fontFace, fontScale, cv::Scalar(0, 128, 0), 1, 1);
-
-    textSize = cv::getTextSize(std::string("curr seq:")
-                               + std::to_string(cont), fontFace, fontScale,
-                               thickness, &baseline);
-    cv::putText(fullIm, std::string("curr seq:") + std::to_string(cont),
-                {0, 125}, fontFace, fontScale, cv::Scalar(0, 128, 0), 1, 1);
-
-    cv::imshow("frame", fullIm);
-    
+   
     if(recording) {
-      cv::cvtColor(frame16C, frame16CColor, cv::COLOR_GRAY2BGR);
-      std::async(std::launch::async, saveSingleImage, 
-                 frame16C, im100x100, frameNormDepthRng, frameModDepthRng,
-                 cont, clsNum);
-      cont++;
+      videoDepth[cont] = device.getDepthFrame1Chanels().clone();
+      videoWriter << device.getDepthFrame1Chanels();
+      ++cont;
     }
+
+    device.renderSkeletonJointsToDepth();
+    cv::imshow("frame", device.getDepthFrame3Chanels());
   }
+
+  for(int i = 0; i < cont; ++i) {
+    cv::imwrite("img_depth_" + std::to_string(i) + ".ppm", videoDepth[i]);
+  }
+
+  videoWriter.release();
+  cv::destroyAllWindows();
 
   if(connected)
     sock.disconnect();
