@@ -194,6 +194,9 @@ K.clear_session()
 train_lstm([100, 100], 64, [[3, 3], [3, 3]])
 K.clear_session()
 
+
+# %%%
+
 # %%%%%%%  SERVIDOR  %%%%%%%%%%%%%%
 
 TCP_IP = '127.0.0.1'

@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <thread>
 #include <future>
+#include <chrono>
 
 #include <opencv2/opencv.hpp>
 
@@ -38,6 +39,34 @@
 #include "rect.h"
 #include "graphprobs.h"
 
+template<typename T>
+inline void
+writePPM(const std::string &name, const cv::Mat &im, const cv::Size &size,
+         T maxval) {
+  std::ofstream file;
+  file.open(name, std::ios::app);
+  unsigned ch = im.channels();
+  file << "P" + std::to_string(ch) << '\n';
+  file << T(size.width) << ' ' << T(size.height) << '\n';
+  file << T(maxval) << '\n';
+
+  T value = T();
+
+  for(size_t y = 0; y < im.cols; ++y) {
+    for(size_t x = 0; x < im.rows; ++x) {
+      value = im.at<T>(x, y);
+      for(uint32_t cIt = 0; cIt < ch; ++cIt) {
+        file << value << ' ';
+      }
+      if(ch > 1) {
+        file << ' ';
+      }
+    }
+    if(y < size.height) file << '\n';
+  }
+  file.close();
+}
+
 std::vector<float>
 classifyImgNet(sf::TcpSocket &sock, const std::vector<int> &im,
                cv::Size imSize) {
@@ -69,9 +98,7 @@ classifyImgNet(sf::TcpSocket &sock, const std::vector<int> &im,
   return resultVec;
 } 
 
-cv::Mat cutImage(const cv::Mat& im, const cv::Size &size);
-
-void 
+inline void 
 fillTexture(SDL_Texture * texture, cv::Mat const &mat) {
   IplImage * img = &(IplImage)mat;
 
@@ -128,59 +155,75 @@ amountImgUncutClsFolder(int clsNum, const std::string &name) {
     static_cast<bool(*)(const fs::path&)>(fs::is_regular_file));
 }
 
-
-bool 
-saveSingleImage(const cv::Mat &imCDepth, const cv::Mat &im100, 
-                const cv::Mat &imNormTotal, const cv::Mat &imModDepth,
-                int imNum, int clsNum) {
+inline void 
+saveVideos(const int currentTalk, const int sample, int totalFrames,
+           const std::vector<cv::Mat> &frames, int videoFps,
+           const std::vector<std::vector<Joint>> &jointsFrames) {
   namespace fs = boost::filesystem;
+  std::string folderPPM = "Gestures/Videos/uncut/talk" + std::to_string(currentTalk);
 
-  std::string folder = "Gestures/dynamic_poses/uncut/complete_depth/P" +
-                        std::to_string(clsNum) + "/";
-  if(!fs::is_directory(folder)) {
-    fs::path p(folder);
+  if(!fs::is_directory(folderPPM)) {
+    fs::path p(folderPPM);
     fs::create_directory(p);
   }
 
-
-  cv::FileStorage f(folder + "im" + std::to_string(imNum) + ".xml", 
-                    cv::FileStorage::WRITE);
-  f << "im" << imCDepth;
-  f.release();
-
-
-  folder = "Gestures/dynamic_poses/uncut/100x100/P" +
-                        std::to_string(clsNum) + "/";
-  if(!fs::is_directory(folder)) {
-    fs::path p(folder);
+  folderPPM += "/sample" + std::to_string(sample);
+  if(!fs::is_directory(folderPPM)) {
+    fs::path p(folderPPM);
     fs::create_directory(p);
   }
-  cv::imwrite(folder + "im" + std::to_string(imNum) + ".png", im100);
 
-
-  folder = "Gestures/dynamic_poses/uncut/norm_depth/P" +
-                        std::to_string(clsNum) + "/";
-  if(!fs::is_directory(folder)) {
-    fs::path p(folder);
+  std::string mainFolder = folderPPM;
+  folderPPM += "/frames";
+  if(!fs::is_directory(folderPPM)) {
+    fs::path p(folderPPM);
     fs::create_directory(p);
   }
-  cv::imwrite(folder + "im" + std::to_string(imNum) + ".png", imNormTotal);
+  cv::VideoWriter videoWriter;
+  videoWriter.open(mainFolder + "/sample_v_" + std::to_string(sample) +".avi",
+                   CV_FOURCC('D', 'I', 'B', ' '), 25,
+                   {512, 424}, false);
 
-
-  folder = "Gestures/dynamic_poses/uncut/mod/P" +
-            std::to_string(clsNum) + "/";
-  if(!fs::is_directory(folder)) {
-    fs::path p(folder);
-    fs::create_directory(p);
+  for(size_t i = 0; i < totalFrames; ++i) {
+    cv::imwrite(folderPPM + "/frame_" + std::to_string(i) + ".ppm", frames[i]);
+    videoWriter.write(frames[i]);
   }
-  cv::imwrite(folder + "im" + std::to_string(imNum) + ".png", imModDepth);
+  videoWriter.release();
 
-  return true;
+  std::vector<std::string> csvHeaders = {
+    "JointType_SpineBase", "JointType_SpineMid", "JointType_Neck", 
+    "JointType_Head", "JointType_ShoulderLeft", "JointType_ElbowLeft",
+    "JointType_WristLeft", "JointType_HandLeft", "JointType_ShoulderRight",
+    "JointType_ElbowRight", "JointType_WristRight", "JointType_HandRight",
+    "JointType_HipLeft", "JointType_KneeLeft", "JointType_AnkleLeft",
+    "JointType_FootLeft", "JointType_HipRight", "JointType_KneeRight",
+    "JointType_AnkleRight", "JointType_FootRight", "JointType_SpineShoulder",
+    "JointType_HandTipLeft", "JointType_ThumbLeft", "JointType_HandTipRight",
+    "JointType_ThumbRight",
+  };
+  std::ofstream csvFile;
+  csvFile.open(mainFolder + "/skelleton_" + std::to_string(sample) + ".csv", 
+               std::ios::app);
+  for(size_t i = 0; i < csvHeaders.size(); ++i) {
+    csvFile <<  csvHeaders[i] <<  (i < csvHeaders.size() - 1) ? ", " : "";
+  }
+  csvFile << '\n';
+  
+  for(size_t i = 0; i < totalFrames; ++i) {
+    for(size_t i2 = 0; i2 < jointsFrames[i].size(); ++i2) {
+      csvFile << "\"" 
+              << jointsFrames[i][i2].Position.X << ", "
+              << jointsFrames[i][i2].Position.Y << ", " 
+              << jointsFrames[i][i2].Position.Z << 
+              ((i2 < 24) ? "\", " : "\"");
+    }
+    csvFile << '\n';
+  }
+  csvFile.close();
 }
 
 int
-main(int argc, char **argv)
-{
+main(int argc, char **argv) {
   auto device = rscg::CameraDeviceKinect();
   bool setToStop = false;
 
@@ -201,65 +244,145 @@ main(int argc, char **argv)
     connected = false;
   }
 
+  std::future<void> waitSave;
+
   std::vector<float> resClass;
 
   bool recording = false;
 
-  int fontFace = cv::FONT_HERSHEY_SCRIPT_SIMPLEX;
+  int fontFace = cv::HersheyFonts::FONT_HERSHEY_PLAIN;
   double fontScale = 1;
   int thickness = 3;
   int baseline;
 
-  int clsNum = 1;
+  int clsNum = 1, currTalk = 1, sample = 1;
 
-  bool isSavingVideos = false;
+  bool saving = false;
+
+  int width = 512, height = 424;
+
+  cv::Mat allScreen{width, height + 128, CV_8UC3, cv::Scalar(0, 0, 0)};
+  cv::Mat recColor{width / 2, 128, CV_8UC3, cv::Scalar(0, 0, 0)};
+  cv::Mat trackingSkellColor{width / 2, 128, CV_8UC3, cv::Scalar(0, 0, 0)};
 
   std::vector<cv::Mat> videoDepth;
-  std::vector<CameraSpacePoint> joints;
-  joints.resize(60 * 20);
+  std::vector<std::vector<Joint>> joints;
+  joints.reserve(60 * 20);
   for(int i = 0; i < 60 * 20; ++i) {
-    videoDepth.push_back(cv::Mat{424, 512, CV_16UC1, cv::Scalar(0)});
+    videoDepth.push_back(cv::Mat{width, height, CV_16UC1, cv::Scalar(0)});
   }
 
-  unsigned cont = 0;
+  unsigned cont = 0, samplesCount = 0;
 
-  cv::VideoWriter videoWriter;
+  unsigned fpsCount = 0, currFps = 0;
+  std::chrono::time_point<std::chrono::steady_clock> lastTime, currTime;
+  lastTime = currTime = std::chrono::steady_clock::now();
 
-  while(!setToStop || recording) {
+  while(!setToStop || recording || saving) {
     device.fetchDepthFrame();
     device.fetchSkeleton();
   
-    char reskey = (char)cv::waitKey(60);
+    char reskey = (char)cv::waitKey(1);
     if(reskey == 'q') { 
       setToStop = true; 
     }
+    else if(reskey == 't') {
+      ++currTalk;
+    }
+    else if(reskey == 'r') {
+      --currTalk;
+    }
     else if(reskey == ' ') {
-      recording = !recording;
-      if(recording) {
-        bool res = videoWriter.open("testVideo.avi", 
-                                    CV_FOURCC('M', 'J', 'P', 'G'), 15,
-                                    {512, 424}, true);
-        if(!res) {
-          std::cout << "cannot create video writer \n";
+      if(!saving) {
+        recording = !recording;
+        if(recording) {
+          recColor = cv::Scalar(0, 0, 128);
+        }
+        else {
+          saving = true;
+          std::cout << "joints vec size " << joints.size() << '\n';
+          waitSave = std::async(std::launch::async, saveVideos,
+
+                                currTalk, sample, cont, videoDepth, 15, 
+                                joints);
         }
       }
     }
    
     if(recording) {
       videoDepth[cont] = device.getDepthFrame1Chanels().clone();
-      videoWriter << device.getDepthFrame1Chanels();
+      joints.push_back(device.getSkeletonJointVec());
       ++cont;
+      if(cont > 60 * 20) {
+        recording = false;
+        saving = true;
+      }
+    }
+    
+    if(waitSave.valid()) {
+      if(waitSave.wait_for(std::chrono::seconds(0)) !=
+         std::future_status::ready) {
+        recColor = cv::Scalar(0, 128, 0);
+        recording = false;
+        saving = true;
+      }
+      else if(waitSave.wait_for(std::chrono::seconds(0)) ==
+              std::future_status::ready) {
+        waitSave.get();
+        saving = false;
+        recording = false;
+        videoDepth.clear();
+        joints.reserve(60 * 20);
+        for(int i = 0; i < 60 * 20; ++i) {
+          videoDepth.push_back(cv::Mat{width, height, CV_16UC1, 
+                                       cv::Scalar(0)});
+        }
+        sample += 1;
+      }
+    }
+
+    if(device.allJointsTracked()) {
+      trackingSkellColor = cv::Scalar(0, 128, 0);
+    }
+    else {
+      trackingSkellColor = cv::Scalar(0, 0, 128);
+    }
+
+    if(!saving && !recording) {
+      recColor = cv::Scalar(0, 255, 255);
     }
 
     device.renderSkeletonJointsToDepth();
-    cv::imshow("frame", device.getDepthFrame3Chanels());
+    
+    device.getDepthFrame3Chanels()
+          .copyTo(allScreen(cv::Rect(0, 0, device.getDepthFrame3Chanels().cols, 
+                                     device.getDepthFrame3Chanels().rows)));
+
+    recColor.copyTo(allScreen(cv::Rect(height, 0, recColor.cols, 
+                                       recColor.rows)));
+
+    trackingSkellColor.copyTo(allScreen(cv::Rect(height, width / 2, 
+                                                 trackingSkellColor.cols, 
+                                                 trackingSkellColor.rows)));
+                                                 
+    std::string currFPSStr = "FPS: " + std::to_string(currFps);
+    cv::Size textSize = cv::getTextSize(currFPSStr,  fontFace, fontScale, 
+                                        thickness, &baseline);
+    cv::putText(allScreen, currFPSStr, {0, 25}, fontFace, fontScale,
+                cv::Scalar(0, 255, 255), 1, 1);
+
+    cv::imshow("frame", allScreen);
+    ++fpsCount;
+    currTime = std::chrono::steady_clock::now();
+    using seconds = std::chrono::milliseconds;
+    auto elps = std::chrono::duration_cast<seconds>(currTime - lastTime);
+    if(elps.count() >= 1000) {
+      currFps = fpsCount;
+      fpsCount = 0;
+      lastTime = currTime;
+    }
   }
 
-  for(int i = 0; i < cont; ++i) {
-    cv::imwrite("img_depth_" + std::to_string(i) + ".ppm", videoDepth[i]);
-  }
-
-  videoWriter.release();
   cv::destroyAllWindows();
 
   if(connected)

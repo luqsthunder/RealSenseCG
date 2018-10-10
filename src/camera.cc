@@ -8,7 +8,10 @@
 
 using namespace rscg;
 
-CameraDeviceRSWindows::CameraDeviceRSWindows() : sm(nullptr) {
+CameraDeviceRSWindows::CameraDeviceRSWindows() : 
+  sm(nullptr),
+  _imgdepth1c{480, 640, CV_16UC1, cv::Scalar(0)},
+  _imgdepth3{480, 640, CV_8UC3, cv::Scalar(0,0,0)} {
   pxcStatus status;
 
   msize = {640, 480};
@@ -22,7 +25,6 @@ CameraDeviceRSWindows::CameraDeviceRSWindows() : sm(nullptr) {
   sm->EnableStream(PXCCapture::STREAM_TYPE_COLOR, 640, 480, 60);
   status = sm->Init();
 
-  _imgdepth1c.resize(640 * 480);
   auto device = sm->QueryCaptureManager()->QueryDevice();
 
   auto mirrorMode = PXCCapture::Device::MirrorMode::MIRROR_MODE_HORIZONTAL;
@@ -31,7 +33,6 @@ CameraDeviceRSWindows::CameraDeviceRSWindows() : sm(nullptr) {
   auto pp = device->QueryDepthPrincipalPoint();
 
   _intri = Intrinsics{pp.x, pp.y, focus.x, focus.y};
-  imgdepth3.resize(640 * 480 * 3);
 }
 
 CameraDeviceRSWindows::~CameraDeviceRSWindows() {
@@ -80,11 +81,12 @@ CameraDeviceRSWindows::fetchDepthFrame() {
       for(pxcI32 x = 0; x < sizeX; x++) {
         uint16_t depth = imageArray[x + y * sizeX];
 
-        imgdepth3[(x * 3) + (y * (sizeX * 3))] = depth;
-        imgdepth3[(x * 3) + (y * (sizeX * 3)) + 1] = depth;
-        imgdepth3[(x * 3) + (y * (sizeX * 3)) + 2] = depth;
 
-        _imgdepth1c[x + (y * sizeX)] = depth;
+        _imgdepth3.at<cv::Vec3b>({x, y}) = {(uint8_t)(depth % 256), 
+                                            (uint8_t)(depth % 256),
+                                            (uint8_t)(depth % 256)};
+
+        _imgdepth1c.at<uint16_t>(cv::Point{x, y}) = {depth};
       }
     }
   }
@@ -92,12 +94,12 @@ CameraDeviceRSWindows::fetchDepthFrame() {
   sm->ReleaseFrame();
 }
 
-const std::vector<uint16_t>&
+const cv::Mat&
 CameraDeviceRSWindows::getDepthFrame3Chanels() {
-  return imgdepth3;
+  return _imgdepth3;
 }
 
-const std::vector<uint16_t>&
+const cv::Mat&
 CameraDeviceRSWindows::getDepthFrame1Chanels() {
   return _imgdepth1c;
 }
@@ -113,8 +115,9 @@ CameraDeviceKinect::CameraDeviceKinect()
     _paSensor(nullptr),
     _paBodyFrameReader(nullptr),
     _paCoordinateMapper(nullptr),
-    _imgdepth{424, 512, CV_16UC3, cv::Scalar(0,0,0)}, 
+    _imgdepth{424, 512, CV_16UC1, cv::Scalar(0)}, 
     _imgdepth3{424, 512, CV_8UC3, cv::Scalar(0,0,0)},
+    _imdepth1caux{424, 512, CV_8UC1, cv::Scalar(0)},
     _joints(JointType_Count),
   _bones({
     //torso
@@ -157,7 +160,7 @@ CameraDeviceKinect::CameraDeviceKinect()
   }
 
   // Initialize the Kinect and get coordinate mapper and the body reader
-  IBodyFrameSource* paBodyFrameSource = NULL;
+  IBodyFrameSource* paBodyFrameSource = nullptr;
   IDepthFrameSource *paDepthFrameSrc = nullptr;
   hr = _paSensor->Open();
   if(SUCCEEDED(hr)) {
@@ -226,6 +229,11 @@ CameraDeviceKinect::~CameraDeviceKinect() {
   }
 }
 
+bool
+CameraDeviceKinect::allJointsTracked() {
+  return _allJointsTracked;
+}
+
 void
 CameraDeviceKinect::fetchDepthFrame()
 {
@@ -235,6 +243,12 @@ CameraDeviceKinect::fetchDepthFrame()
 
   IDepthFrame *paFrame;
   HRESULT hr = _paReaderFrame->AcquireLatestFrame(&paFrame);
+  bool notGet = FAILED(hr);
+  while(notGet) {
+    hr = _paReaderFrame->AcquireLatestFrame(&paFrame);
+    notGet = FAILED(hr);
+  }
+
   if(SUCCEEDED(hr)) {
     uint32_t bufferSize;
     uint16_t *imageArray;
@@ -261,20 +275,24 @@ CameraDeviceKinect::fetchDepthFrame()
     paFrame->get_DepthMinReliableDistance(&minRng);
     paFrame->get_DepthMaxReliableDistance(&maxRng);
     if(SUCCEEDED(hr)) {
+      cv::Point pIt{0, 0};
       for(int y = 0; y < nHeigth; ++y) {
+        pIt.y = y;
         for(int x = 0; x < nWidth; ++x) {
           uint16_t depth = imageArray[x + y * nWidth];
           uint8_t depthInter = 255 * (depth - 200) / 4800;
-
-          _imgdepth3.at<cv::Vec3b>({x, y}) = {depthInter, depthInter, 
-                                              depthInter};
-
-          _imgdepth.at<uint16_t>(cv::Point{x, y}) = {depth};
+          pIt.x = x;
+          _imdepth1caux.at<uint8_t>(pIt) = {depthInter};
+          _imgdepth.at<uint16_t>(pIt) = {depth};
         }
       }
     }
   
+    cv::cvtColor(_imdepth1caux, _imgdepth3, cv::COLOR_GRAY2BGR);
     paFrameDescription->Release();
+  }
+  else {
+    std::cout << "failed \n";
   }
 
   if(paFrame != nullptr) {
@@ -288,6 +306,12 @@ CameraDeviceKinect::fetchSkeleton() {
 
   _skellTracked = false;
   HRESULT hr = _paBodyFrameReader->AcquireLatestFrame(&pBodyFrame);
+  bool notGet = FAILED(hr);
+  while(notGet) {
+    hr = _paBodyFrameReader->AcquireLatestFrame(&pBodyFrame);
+    notGet = FAILED(hr);
+  }
+
   if(SUCCEEDED(hr)) {
     _currentTime = 0;
     hr = pBodyFrame->get_RelativeTime(&_currentTime);
@@ -312,6 +336,14 @@ CameraDeviceKinect::fetchSkeleton() {
       }
     }
 
+    _allJointsTracked = true;
+    for(const auto &i : _joints) {
+      if(i.TrackingState != TrackingState_Tracked) {
+        _allJointsTracked = false;
+        break;
+      }
+    }
+
     for(int i = 0; i < _countof(ppBodies); ++i) {
       if(ppBodies[i] != nullptr) {
         ppBodies[i]->Release();
@@ -331,10 +363,17 @@ CameraDeviceKinect::renderSkeletonJointsToDepth() {
 
   cv::Point_<unsigned> screenCoord1, screenCoord2;
 
-  for(const auto &bone : _bones) {
-    screenCoord1 = worldToScreenPoint(_joints[bone.first].Position, {424, 512});
-    screenCoord2 = worldToScreenPoint(_joints[bone.second].Position, {424, 512});
-    cv::line(_imgdepth3, screenCoord1, screenCoord2, cv::Scalar{0, 128, 128}, 5);
+  for(const auto &b : _bones) {
+    screenCoord1 = worldToScreenPoint(_joints[b.first].Position, {424, 512});
+    screenCoord2 = worldToScreenPoint(_joints[b.second].Position, {424, 512});
+
+    bool jTrack = (_joints[b.first].TrackingState == TrackingState_Tracked &&
+                   _joints[b.second].TrackingState == TrackingState_Tracked);
+    cv::Scalar colorBone = jTrack ? cv::Scalar{0, 255, 255} :
+                                    cv::Scalar{0, 0, 0};
+    int thick = jTrack ? 3 : 1;
+
+    cv::line(_imgdepth3, screenCoord1, screenCoord2, colorBone, thick);
   }
 }
 

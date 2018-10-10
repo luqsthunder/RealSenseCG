@@ -42,15 +42,17 @@ public:
 
   void renderSkeletonJointsToDepth();
 
+  bool allJointsTracked();
+
   const cv::Point2f
   worldToScreenPoint(const CameraSpacePoint& bodyPoint, 
                      const cv::Size windowSize);
 
   const rscg::Intrinsics& intrinsics() override;
 private:
-  cv::Mat _imgdepth3, _imgdepth, _screenSkell;
+  cv::Mat _imgdepth3, _imgdepth, _screenSkell, _imdepth1caux;
   int64_t _currentTime;
-  bool _skellTracked;
+  bool _skellTracked, _allJointsTracked;
   std::vector<Joint> _joints;
 
   using bone = std::pair<JointType, JointType>;
@@ -60,6 +62,7 @@ private:
   IBodyFrameReader* _paBodyFrameReader;
   ICoordinateMapper* _paCoordinateMapper;
   IDepthFrameReader *_paReaderFrame;
+
   rscg::Intrinsics _intri;
 };
 
@@ -72,16 +75,15 @@ public:
 
   void fetchDepthFrame() override;
 
-  const std::vector<uint16_t>& getDepthFrame1Chanels();
-  const std::vector<uint16_t>& getDepthFrame3Chanels();
+  const cv::Mat& getDepthFrame1Chanels();
+  const cv::Mat& getDepthFrame3Chanels();
 
   const rscg::Intrinsics& intrinsics() override;
 
 private:
   PXCSenseManager *sm;
 
-  std::vector<uint16_t> imgdepth3;
-  std::vector<uint16_t> _imgdepth1c;
+  cv::Mat _imgdepth3, _imgdepth1c;
   
   rscg::Intrinsics _intri;
 };
