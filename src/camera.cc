@@ -110,14 +110,16 @@ CameraDeviceRSWindows::intrinsics() {
 }
 
 CameraDeviceKinect::CameraDeviceKinect()
-  : _paReaderFrame(nullptr),
+  : _paDepthReaderFrame(nullptr),
     _skellTracked(false),
     _paSensor(nullptr),
-    _paBodyFrameReader(nullptr),
+    _paSkellFrameReader(nullptr),
     _paCoordinateMapper(nullptr),
-    _imgdepth{424, 512, CV_16UC1, cv::Scalar(0)}, 
-    _imgdepth3{424, 512, CV_8UC3, cv::Scalar(0,0,0)},
+    _paColorFrameReader(nullptr),
+    _imdepth{424, 512, CV_16UC1, cv::Scalar(0)}, 
+    _imdepth3{424, 512, CV_8UC3, cv::Scalar(0,0,0)},
     _imdepth1caux{424, 512, CV_8UC1, cv::Scalar(0)},
+    _imColor{1080, 1920, CV_8UC4, cv::Scalar(0, 0, 0)},
     _joints(JointType_Count),
   _bones({
     //torso
@@ -160,35 +162,86 @@ CameraDeviceKinect::CameraDeviceKinect()
   }
 
   // Initialize the Kinect and get coordinate mapper and the body reader
-  IBodyFrameSource* paBodyFrameSource = nullptr;
+  IBodyFrameSource* paBodyFrameSrc = nullptr;
   IDepthFrameSource *paDepthFrameSrc = nullptr;
+  IColorFrameSource *paColorFrameSrc = nullptr;
+
   hr = _paSensor->Open();
   if(SUCCEEDED(hr)) {
     hr = _paSensor->get_DepthFrameSource(&paDepthFrameSrc);
+    if(SUCCEEDED(hr)) {
+      hr = paDepthFrameSrc->OpenReader(&_paDepthReaderFrame);
+    }
+    else {
+      std::cerr << "cannot create depth frame reader\n";
+      return;
+    }
+  }
+  else {
+    std::cerr << "cannot create depth frame source\n";
+    return;
+  }
+
+  if(SUCCEEDED(hr)) {
+    hr = _paSensor->get_ColorFrameSource(&paColorFrameSrc);
+    if(SUCCEEDED(hr)) {
+      hr = paColorFrameSrc->OpenReader(&_paColorFrameReader);
+    }
+    else {
+      std::cerr << "cannot create color frame reader\n";
+      return;
+    }
+  }
+  else {
+    std::cerr << "cannot create color frame source\n";
+    return;
+  }
+
+  if(SUCCEEDED(hr)) {
+    hr = _paSensor->get_BodyFrameSource(&paBodyFrameSrc);
+    if(SUCCEEDED(hr)) {
+      hr = paBodyFrameSrc->OpenReader(&_paSkellFrameReader);
+    }
+    else {
+      std::cerr << "cannot create skelleton frame reader\n";
+      return;
+    }
+  }
+  else {
+    std::cerr << "cannot create skelleton frame source\n";
+    return;
   }
 
   if(SUCCEEDED(hr)) {
     hr = _paSensor->get_CoordinateMapper(&_paCoordinateMapper);
   }
-  
-  if(SUCCEEDED(hr)) {
-    hr = _paSensor->get_BodyFrameSource(&paBodyFrameSource);
-  }
-
-  if(SUCCEEDED(hr)) {
-    hr = paDepthFrameSrc->OpenReader(&_paReaderFrame);
-  }
-
-  if(SUCCEEDED(hr)) {
-    hr = paBodyFrameSource->OpenReader(&_paBodyFrameReader);
+  else {
+    std::cerr << "cannot create coordinate mapping\n";
+    return;
   }
 
   if(paDepthFrameSrc != nullptr) {
     paDepthFrameSrc->Release();
   }
+  else {
+    std::cerr << "cannot release Depth source\n";
+    return;
+  }
 
-  if(paBodyFrameSource != nullptr) {
-    paBodyFrameSource->Release();
+  if(paColorFrameSrc!= nullptr) {
+    paColorFrameSrc->Release();
+  }
+  else {
+    std::cerr << "cannot release Color source\n";
+    return;
+  }
+
+  if(paBodyFrameSrc != nullptr) {
+    paBodyFrameSrc->Release();
+  }
+  else {
+    std::cerr << "cannot release Skeleton source\n";
+    return;
   }
 
   if(FAILED(hr) || _paSensor == nullptr) {
@@ -211,16 +264,20 @@ CameraDeviceKinect::worldToScreenPoint(const CameraSpacePoint& bodyPoint,
 }
 
 CameraDeviceKinect::~CameraDeviceKinect() {
-  if(_paReaderFrame != nullptr) {
-    _paReaderFrame->Release();
+  if(_paDepthReaderFrame != nullptr) {
+    _paDepthReaderFrame->Release();
   }
 
-  if(_paBodyFrameReader != nullptr) {
-    _paBodyFrameReader->Release();
+  if(_paSkellFrameReader != nullptr) {
+    _paSkellFrameReader->Release();
   }
 
   if(_paCoordinateMapper!= nullptr) {
     _paCoordinateMapper->Release();
+  }
+
+  if(_paColorFrameReader != nullptr) {
+    _paColorFrameReader->Release();
   }
 
   if(_paSensor != nullptr) {
@@ -237,15 +294,15 @@ CameraDeviceKinect::allJointsTracked() {
 void
 CameraDeviceKinect::fetchDepthFrame()
 {
-  if(_paReaderFrame == nullptr) {
+  if(_paDepthReaderFrame == nullptr) {
     return;
   }
 
   IDepthFrame *paFrame;
-  HRESULT hr = _paReaderFrame->AcquireLatestFrame(&paFrame);
+  HRESULT hr = _paDepthReaderFrame->AcquireLatestFrame(&paFrame);
   bool notGet = FAILED(hr);
   while(notGet) {
-    hr = _paReaderFrame->AcquireLatestFrame(&paFrame);
+    hr = _paDepthReaderFrame->AcquireLatestFrame(&paFrame);
     notGet = FAILED(hr);
   }
 
@@ -266,29 +323,22 @@ CameraDeviceKinect::fetchDepthFrame()
     }
 
     if(SUCCEEDED(hr)) {
-      hr = paFrame->AccessUnderlyingBuffer(&bufferSize, &imageArray);
+      hr = paFrame->CopyFrameDataToArray(nWidth * nHeigth,
+                                         (UINT16*)(_imdepth.data));
+      cv::cvtColor( ((_imdepth - cv::Scalar(200)) * 255 / 4800), _imdepth3,
+                   cv::COLOR_GRAY2BGR);
+      /*struct uint24_t_l{
+        uint8_t v[3];
+      };
+
+      std::transform(_imdepth.begin<uint16_t>(), _imdepth.end<uint16_t>(), 
+                     (uint24_t_l*)_imdepth3.data, 
+                     [](const uint16_t& v)-> uint24_t_l {
+        uint8_t depth = (v - 200) * 255 / 4800;
+        return {depth, depth, depth};
+      });*/
     }
 
-    using cvpoint3u8 = cv::Point3_<uint8_t>;
-    const uint16_t maxv = 256;
-    uint16_t minRng, maxRng;
-    paFrame->get_DepthMinReliableDistance(&minRng);
-    paFrame->get_DepthMaxReliableDistance(&maxRng);
-    if(SUCCEEDED(hr)) {
-      cv::Point pIt{0, 0};
-      for(int y = 0; y < nHeigth; ++y) {
-        pIt.y = y;
-        for(int x = 0; x < nWidth; ++x) {
-          uint16_t depth = imageArray[x + y * nWidth];
-          uint8_t depthInter = 255 * (depth - 200) / 4800;
-          pIt.x = x;
-          _imdepth1caux.at<uint8_t>(pIt) = {depthInter};
-          _imgdepth.at<uint16_t>(pIt) = {depth};
-        }
-      }
-    }
-  
-    cv::cvtColor(_imdepth1caux, _imgdepth3, cv::COLOR_GRAY2BGR);
     paFrameDescription->Release();
   }
   else {
@@ -300,15 +350,69 @@ CameraDeviceKinect::fetchDepthFrame()
   }
 }
 
+void 
+CameraDeviceKinect::fetchColorFrame() {
+  IColorFrame *paColorFrame = nullptr;
+  HRESULT hr = _paColorFrameReader->AcquireLatestFrame(&paColorFrame);
+  ColorImageFormat imageFormat = ColorImageFormat_None;
+  UINT nBufferSize = 0;
+  RGBQUAD *pBuffer = NULL;
+  int nWidth = 0;
+  int nHeight = 0;
+
+  if(SUCCEEDED(hr)) {
+    IFrameDescription *paFrameDescription = nullptr;
+    hr = paColorFrame->get_FrameDescription(&paFrameDescription);
+    if(SUCCEEDED(hr))
+    {
+      hr = paFrameDescription->get_Width(&nWidth);
+    }
+
+    if(SUCCEEDED(hr))
+    {
+      hr = paFrameDescription->get_Height(&nHeight);
+    }
+
+    if(SUCCEEDED(hr))
+    {
+      hr = paColorFrame->get_RawColorImageFormat(&imageFormat);
+    }
+
+    if(SUCCEEDED(hr))
+    {
+      if(imageFormat == ColorImageFormat_Bgra) {
+        hr = paColorFrame->AccessRawUnderlyingBuffer(&nBufferSize,
+                                                     reinterpret_cast<BYTE**>(&pBuffer));
+      }
+      else {
+        hr = paColorFrame->CopyConvertedFrameDataToArray(nWidth * nHeight *
+                                                         sizeof(RGBQUAD),
+                                                         reinterpret_cast<BYTE*>(_imColor.data),
+                                                         ColorImageFormat_Bgra);
+      }
+
+      if(SUCCEEDED(hr)) {
+      }
+    }
+    if(paFrameDescription != nullptr) {
+      paFrameDescription->Release();
+    }
+  }
+
+  if(paColorFrame != nullptr) {
+    paColorFrame->Release();
+  }
+}
+
 void
 CameraDeviceKinect::fetchSkeleton() {
   IBodyFrame* pBodyFrame = NULL;
 
   _skellTracked = false;
-  HRESULT hr = _paBodyFrameReader->AcquireLatestFrame(&pBodyFrame);
+  HRESULT hr = _paSkellFrameReader->AcquireLatestFrame(&pBodyFrame);
   bool notGet = FAILED(hr);
   while(notGet) {
-    hr = _paBodyFrameReader->AcquireLatestFrame(&pBodyFrame);
+    hr = _paSkellFrameReader->AcquireLatestFrame(&pBodyFrame);
     notGet = FAILED(hr);
   }
 
@@ -328,7 +432,7 @@ CameraDeviceKinect::fetchSkeleton() {
           BOOLEAN bTracked = false;
           hr = pBody->get_IsTracked(&bTracked);
 
-          if(SUCCEEDED(hr) && bTracked) {
+          if(SUCCEEDED(hr) && bTracked) { 
             hr = pBody->GetJoints(_joints.size(), _joints.data());
             _skellTracked = true;
           }
@@ -355,6 +459,18 @@ CameraDeviceKinect::fetchSkeleton() {
   }
 }
 
+bool 
+CameraDeviceKinect::isThatJointsTracked(const std::vector<JointType> &j) {
+  bool track = true;
+  for(const auto &it : j) {
+    if(_joints[it].TrackingState != TrackingState_Tracked) {
+      track = false;
+    }
+  }
+
+  return track;
+}
+
 void
 CameraDeviceKinect::renderSkeletonJointsToDepth() {
   if(!_skellTracked) {
@@ -373,8 +489,13 @@ CameraDeviceKinect::renderSkeletonJointsToDepth() {
                                     cv::Scalar{0, 0, 0};
     int thick = jTrack ? 3 : 1;
 
-    cv::line(_imgdepth3, screenCoord1, screenCoord2, colorBone, thick);
+    cv::line(_imdepth3, screenCoord1, screenCoord2, colorBone, thick);
   }
+}
+
+const cv::Mat& 
+CameraDeviceKinect::getColorFrame() {
+  return _imColor;
 }
 
 const int64_t
@@ -389,12 +510,12 @@ CameraDeviceKinect::getSkeletonJointVec() {
 
 const cv::Mat&
 CameraDeviceKinect::getDepthFrame3Chanels() {
-  return _imgdepth3;
+  return _imdepth3;
 }
 
 const cv::Mat&
 CameraDeviceKinect::getDepthFrame1Chanels() {
-  return _imgdepth;
+  return _imdepth;
 }
 
 const rscg::Intrinsics&

@@ -32,13 +32,18 @@ public:
   ~CameraDeviceKinect();
 
   void fetchDepthFrame() override;
+  void fetchColorFrame();
   void fetchSkeleton();
 
   const cv::Mat& getDepthFrame1Chanels();
   const cv::Mat& getDepthFrame3Chanels();
 
+  const cv::Mat& getColorFrame();
+
   const std::vector<Joint>& getSkeletonJointVec();
   const int64_t getCurrentTimeSkeletonFrame();
+
+  bool isThatJointsTracked(const std::vector<JointType> &j);
 
   void renderSkeletonJointsToDepth();
 
@@ -50,7 +55,7 @@ public:
 
   const rscg::Intrinsics& intrinsics() override;
 private:
-  cv::Mat _imgdepth3, _imgdepth, _screenSkell, _imdepth1caux;
+  cv::Mat _imdepth3, _imdepth, _screenSkell, _imdepth1caux, _imColor;
   int64_t _currentTime;
   bool _skellTracked, _allJointsTracked;
   std::vector<Joint> _joints;
@@ -58,10 +63,11 @@ private:
   using bone = std::pair<JointType, JointType>;
   const std::vector<bone> _bones;
 
-  IKinectSensor *_paSensor;
-  IBodyFrameReader* _paBodyFrameReader;
-  ICoordinateMapper* _paCoordinateMapper;
-  IDepthFrameReader *_paReaderFrame;
+  IKinectSensor     *_paSensor;
+  IBodyFrameReader  *_paSkellFrameReader;
+  ICoordinateMapper *_paCoordinateMapper;
+  IDepthFrameReader *_paDepthReaderFrame;
+  IColorFrameReader *_paColorFrameReader;
 
   rscg::Intrinsics _intri;
 };

@@ -179,16 +179,12 @@ saveVideos(const int currentTalk, const int sample, int totalFrames,
     fs::path p(folderPPM);
     fs::create_directory(p);
   }
-  cv::VideoWriter videoWriter;
-  videoWriter.open(mainFolder + "/sample_v_" + std::to_string(sample) +".avi",
-                   CV_FOURCC('D', 'I', 'B', ' '), 25,
-                   {512, 424}, false);
 
+  char filename[250];
   for(size_t i = 0; i < totalFrames; ++i) {
-    cv::imwrite(folderPPM + "/frame_" + std::to_string(i) + ".ppm", frames[i]);
-    videoWriter.write(frames[i]);
+    sprintf(filename, "%s/frame_%04d.ppm",folderPPM.c_str(), i);
+    cv::imwrite(filename, frames[i]);
   }
-  videoWriter.release();
 
   std::vector<std::string> csvHeaders = {
     "JointType_SpineBase", "JointType_SpineMid", "JointType_Neck", 
@@ -209,7 +205,7 @@ saveVideos(const int currentTalk, const int sample, int totalFrames,
   }
   csvFile << '\n';
   
-  for(size_t i = 0; i < totalFrames; ++i) {
+  for(size_t i = 0; i < jointsFrames.size(); ++i) {
     for(size_t i2 = 0; i2 < jointsFrames[i].size(); ++i2) {
       csvFile << "\"" 
               << jointsFrames[i][i2].Position.X << ", "
@@ -228,6 +224,7 @@ main(int argc, char **argv) {
   bool setToStop = false;
 
   cv::namedWindow("frame", 0);
+  cv::namedWindow("color", 0);
 
   std::vector<int> imToClassify;
   imToClassify.resize(50 * 50 * 3);
@@ -261,14 +258,17 @@ main(int argc, char **argv) {
 
   int width = 512, height = 424;
 
-  cv::Mat allScreen{width, height + 128, CV_8UC3, cv::Scalar(0, 0, 0)};
-  cv::Mat recColor{width / 2, 128, CV_8UC3, cv::Scalar(0, 0, 0)};
-  cv::Mat trackingSkellColor{width / 2, 128, CV_8UC3, cv::Scalar(0, 0, 0)};
+  cv::Mat allScreen{height + 128, width, CV_8UC3, cv::Scalar(0, 0, 0)};
+  cv::Mat recColor{128, width / 2, CV_8UC3, cv::Scalar(0, 0, 0)};
+  cv::Mat trackingSkellColor{128, width / 2, CV_8UC3, cv::Scalar(0, 0, 0)};
 
   std::vector<cv::Mat> videoDepth;
   std::vector<std::vector<Joint>> joints;
-  joints.reserve(60 * 20);
-  for(int i = 0; i < 60 * 20; ++i) {
+
+  uint32_t maxSeg = 60;
+
+  joints.reserve(30 * maxSeg);
+  for(int i = 0; i < 30 * maxSeg; ++i) {
     videoDepth.push_back(cv::Mat{width, height, CV_16UC1, cv::Scalar(0)});
   }
 
@@ -278,10 +278,30 @@ main(int argc, char **argv) {
   std::chrono::time_point<std::chrono::steady_clock> lastTime, currTime;
   lastTime = currTime = std::chrono::steady_clock::now();
 
+  std::vector<JointType> neededJoints{
+    JointType_Head, JointType_Neck, JointType_HandLeft, JointType_HandRight,
+    JointType_SpineShoulder, JointType_ShoulderLeft, JointType_ShoulderRight,
+    JointType_ElbowLeft, JointType_ElbowRight, JointType_SpineMid, 
+    JointType_SpineBase, JointType_WristLeft, JointType_WristRight, 
+    JointType_ThumbLeft/*, JointType_ThumbRight, JointType_HandTipLeft,
+    JointType_HandTipRight*/
+  };
+
+  bool jointsNeededTracked = false;
+
   while(!setToStop || recording || saving) {
     device.fetchDepthFrame();
+    device.fetchColorFrame();
     device.fetchSkeleton();
-  
+    
+    jointsNeededTracked = device.isThatJointsTracked(neededJoints);
+    if(jointsNeededTracked) {
+      trackingSkellColor = cv::Scalar(0, 255, 0);
+    }
+    else {
+      trackingSkellColor = cv::Scalar(255);
+    }
+
     char reskey = (char)cv::waitKey(1);
     if(reskey == 'q') { 
       setToStop = true; 
@@ -293,14 +313,14 @@ main(int argc, char **argv) {
       --currTalk;
     }
     else if(reskey == ' ') {
-      if(!saving) {
+      if(!saving && jointsNeededTracked) {
         recording = !recording;
+
         if(recording) {
-          recColor = cv::Scalar(0, 0, 128);
+          recColor = cv::Scalar(0, 0, 255);
         }
         else {
           saving = true;
-          std::cout << "joints vec size " << joints.size() << '\n';
           waitSave = std::async(std::launch::async, saveVideos,
 
                                 currTalk, sample, cont, videoDepth, 15, 
@@ -313,7 +333,7 @@ main(int argc, char **argv) {
       videoDepth[cont] = device.getDepthFrame1Chanels().clone();
       joints.push_back(device.getSkeletonJointVec());
       ++cont;
-      if(cont > 60 * 20) {
+      if(cont >= 30 * maxSeg) {
         recording = false;
         saving = true;
       }
@@ -322,7 +342,7 @@ main(int argc, char **argv) {
     if(waitSave.valid()) {
       if(waitSave.wait_for(std::chrono::seconds(0)) !=
          std::future_status::ready) {
-        recColor = cv::Scalar(0, 128, 0);
+        recColor = cv::Scalar(0, 255, 0);
         recording = false;
         saving = true;
       }
@@ -331,24 +351,25 @@ main(int argc, char **argv) {
         waitSave.get();
         saving = false;
         recording = false;
+        /*joints.clear();
+        joints.reserve(30 * maxSeg);
         videoDepth.clear();
-        joints.reserve(60 * 20);
-        for(int i = 0; i < 60 * 20; ++i) {
+        for(int i = 0; i < 30 * maxSeg; ++i) {
           videoDepth.push_back(cv::Mat{width, height, CV_16UC1, 
                                        cv::Scalar(0)});
-        }
+        }*/
+        cont = 0;
         sample += 1;
       }
     }
 
-    if(device.allJointsTracked()) {
-      trackingSkellColor = cv::Scalar(0, 128, 0);
+    if(recording) {
+      if(!jointsNeededTracked && !saving) {
+        recording = false;
+        cont = 0;
+      }
     }
-    else {
-      trackingSkellColor = cv::Scalar(0, 0, 128);
-    }
-
-    if(!saving && !recording) {
+    else if(!saving && !recording) {
       recColor = cv::Scalar(0, 255, 255);
     }
 
@@ -358,10 +379,10 @@ main(int argc, char **argv) {
           .copyTo(allScreen(cv::Rect(0, 0, device.getDepthFrame3Chanels().cols, 
                                      device.getDepthFrame3Chanels().rows)));
 
-    recColor.copyTo(allScreen(cv::Rect(height, 0, recColor.cols, 
+    recColor.copyTo(allScreen(cv::Rect(0, height, recColor.cols,
                                        recColor.rows)));
 
-    trackingSkellColor.copyTo(allScreen(cv::Rect(height, width / 2, 
+    trackingSkellColor.copyTo(allScreen(cv::Rect(width / 2, height,
                                                  trackingSkellColor.cols, 
                                                  trackingSkellColor.rows)));
                                                  
@@ -372,6 +393,7 @@ main(int argc, char **argv) {
                 cv::Scalar(0, 255, 255), 1, 1);
 
     cv::imshow("frame", allScreen);
+    cv::imshow("color", device.getColorFrame());
     ++fpsCount;
     currTime = std::chrono::steady_clock::now();
     using seconds = std::chrono::milliseconds;
@@ -381,6 +403,7 @@ main(int argc, char **argv) {
       fpsCount = 0;
       lastTime = currTime;
     }
+
   }
 
   cv::destroyAllWindows();
