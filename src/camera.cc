@@ -463,8 +463,9 @@ bool
 CameraDeviceKinect::isThatJointsTracked(const std::vector<JointType> &j) {
   bool track = true;
   for(const auto &it : j) {
-    if(_joints[it].TrackingState != TrackingState_Tracked) {
+    if(_joints[it].TrackingState == TrackingState_NotTracked) {
       track = false;
+      break;
     }
   }
 
@@ -487,7 +488,7 @@ CameraDeviceKinect::renderSkeletonJointsToDepth() {
                    _joints[b.second].TrackingState == TrackingState_Tracked);
     cv::Scalar colorBone = jTrack ? cv::Scalar{0, 255, 255} :
                                     cv::Scalar{0, 0, 0};
-    int thick = jTrack ? 3 : 1;
+    int thick = jTrack ? 2 : 1;
 
     cv::line(_imdepth3, screenCoord1, screenCoord2, colorBone, thick);
   }

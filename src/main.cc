@@ -210,7 +210,8 @@ saveVideos(const int currentTalk, const int sample, int totalFrames,
       csvFile << "\"" 
               << jointsFrames[i][i2].Position.X << ", "
               << jointsFrames[i][i2].Position.Y << ", " 
-              << jointsFrames[i][i2].Position.Z << 
+              << jointsFrames[i][i2].Position.Z << ", "
+              << jointsFrames[i][i2].TrackingState <<
               ((i2 < 24) ? "\", " : "\"");
     }
     csvFile << '\n';
@@ -279,11 +280,11 @@ main(int argc, char **argv) {
   lastTime = currTime = std::chrono::steady_clock::now();
 
   std::vector<JointType> neededJoints{
-    JointType_Head, JointType_Neck, JointType_HandLeft, JointType_HandRight,
+    JointType_Head, /*JointType_Neck, JointType_HandLeft, JointType_HandRight,
     JointType_SpineShoulder, JointType_ShoulderLeft, JointType_ShoulderRight,
     JointType_ElbowLeft, JointType_ElbowRight, JointType_SpineMid, 
     JointType_SpineBase, JointType_WristLeft, JointType_WristRight, 
-    JointType_ThumbLeft/*, JointType_ThumbRight, JointType_HandTipLeft,
+    /*JointType_ThumbLeft, JointType_ThumbRight, JointType_HandTipLeft,
     JointType_HandTipRight*/
   };
 
@@ -299,7 +300,7 @@ main(int argc, char **argv) {
       trackingSkellColor = cv::Scalar(0, 255, 0);
     }
     else {
-      trackingSkellColor = cv::Scalar(255);
+      trackingSkellColor = cv::Scalar(0, 255, 255);
     }
 
     char reskey = (char)cv::waitKey(1);
@@ -322,7 +323,6 @@ main(int argc, char **argv) {
         else {
           saving = true;
           waitSave = std::async(std::launch::async, saveVideos,
-
                                 currTalk, sample, cont, videoDepth, 15, 
                                 joints);
         }
@@ -351,13 +351,6 @@ main(int argc, char **argv) {
         waitSave.get();
         saving = false;
         recording = false;
-        /*joints.clear();
-        joints.reserve(30 * maxSeg);
-        videoDepth.clear();
-        for(int i = 0; i < 30 * maxSeg; ++i) {
-          videoDepth.push_back(cv::Mat{width, height, CV_16UC1, 
-                                       cv::Scalar(0)});
-        }*/
         cont = 0;
         sample += 1;
       }
