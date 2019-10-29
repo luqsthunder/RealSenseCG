@@ -4,11 +4,8 @@
 #include <vector>
 #include <array>
 
-#include <pxcsensemanager.h>
 #include <opencv2/core.hpp>
 #include <Kinect.h>
-
-#include "RSCGutils.h"
 
 namespace rscg
 {
@@ -16,12 +13,7 @@ namespace rscg
 class CameraDevice
 {
 public:
-  virtual void fetchDepthFrame() = 0;
-
-  virtual const rscg::Intrinsics& intrinsics() = 0;
-
-protected:
-  std::array<unsigned, 2> msize;
+    virtual void fetchDepthFrame() = 0;
 };
 
 
@@ -52,8 +44,6 @@ public:
   const cv::Point2f
   worldToScreenPoint(const CameraSpacePoint& bodyPoint, 
                      const cv::Size windowSize);
-
-  const rscg::Intrinsics& intrinsics() override;
 private:
   cv::Mat _imdepth3, _imdepth, _screenSkell, _imdepth1caux, _imColor;
   int64_t _currentTime;
@@ -68,32 +58,7 @@ private:
   ICoordinateMapper *_paCoordinateMapper;
   IDepthFrameReader *_paDepthReaderFrame;
   IColorFrameReader *_paColorFrameReader;
-
-  rscg::Intrinsics _intri;
 };
-
-class CameraDeviceRSWindows
-: public CameraDevice
-{
-public:
-  CameraDeviceRSWindows();
-  ~CameraDeviceRSWindows();
-
-  void fetchDepthFrame() override;
-
-  const cv::Mat& getDepthFrame1Chanels();
-  const cv::Mat& getDepthFrame3Chanels();
-
-  const rscg::Intrinsics& intrinsics() override;
-
-private:
-  PXCSenseManager *sm;
-
-  cv::Mat _imgdepth3, _imgdepth1c;
-  
-  rscg::Intrinsics _intri;
-};
-
 }
 
 #endif
